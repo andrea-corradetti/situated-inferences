@@ -1,32 +1,38 @@
-import com.ontotext.trree.TransactionListener
+import com.ontotext.GraphDBConfigParameters
+import com.ontotext.graphdb.Config
+import com.ontotext.trree.AbstractInferencer
+import com.ontotext.trree.AbstractRepositoryConnection
+import com.ontotext.trree.RepositoryProperties
 import com.ontotext.trree.sdk.*
 import com.ontotext.trree.sdk.impl.RepositorySettings
-import com.ontotext.trree.sdk.impl.StatementsImpl
-import com.ontotext.trree.sdk.impl.StatementsRequestImpl
-import jdk.jfr.StackTrace
 import org.eclipse.rdf4j.model.IRI
 import org.eclipse.rdf4j.model.Resource
-import org.eclipse.rdf4j.model.Statement
 import org.eclipse.rdf4j.model.Value
-import org.eclipse.rdf4j.model.impl.SimpleValueFactory
-import org.eclipse.rdf4j.model.util.Statements.statement
 import org.eclipse.rdf4j.model.util.Values.iri
-import org.eclipse.rdf4j.repository.Repository
+import org.eclipse.rdf4j.query.BindingSet
 import org.slf4j.Logger
 import java.io.File
+
 
 const val UNBOUND_VARIABLE = 0
 const val ANY = 0L
 
-class SituatedInference : Plugin, Preprocessor, ContextUpdateHandler {
+class SituatedInference : Plugin, Preprocessor, ContextUpdateHandler, PatternInterpreter, Postprocessor {
+    private val accessRepositoryConnection = "accessRepositoryConnection"
+    private val accessInferencer = "accessInferencer"
     private val prefix = "http://example.com/"
     private val conjContext = prefix + "conj"
     private val conjContextIRI = iri(conjContext)
     private val conj = "https://w3id.org/conjectures/"
+
+    //TODO move graph names and IRIs to config file
     private val registerPredicateIRI = iri(prefix + "registerPredicate")
     private val loisLaneThoughts = iri("${conj}LoisLaneThoughts")
     private val marthaKentsThoughts = iri("${conj}MarthaKentsThoughts")
     private val myThoughts = iri("${conj}myThoughts")
+
+    private val namedGraphsToHandle =
+        listOf<IRI>(loisLaneThoughts, marthaKentsThoughts, myThoughts) //TODO find a better name
 
 
     private val predicatesToListenFor = mutableListOf<Long>()
@@ -46,10 +52,15 @@ class SituatedInference : Plugin, Preprocessor, ContextUpdateHandler {
 
     override fun initialize(initReason: InitReason, pluginConnection: PluginConnection) {
         val conjContextId = pluginConnection.entities.put(conjContextIRI, Entities.Scope.SYSTEM)
-        val registerPredicateId = pluginConnection.entities.put(registerPredicateIRI, Entities.Scope.SYSTEM)
-        pluginConnection.properties.
-        predicatesToListenFor.add(registerPredicateId)
+        println(RepoStore.getAllRepositories())
+//        val registerPredicateId = pluginConnection.entities.put(registerPredicateIRI, Entities.Scope.SYSTEM)
+//        val repositoryIdIRI = iri("http://www.openrdf.org/config/repository#repositoryID")
+//        val repositoryId = pluginConnection.properties.getRepositorySetting(null)
+//        println(repositoryId)
+//        predicatesToListenFor.add(registerPredicateId)
         logger?.warn("this is printing something")
+
+//        pluginConnection.properties.getRepositorySetting()
 
     }
 
@@ -66,23 +77,9 @@ class SituatedInference : Plugin, Preprocessor, ContextUpdateHandler {
 //        TODO("Not yet implemented")
     }
 
-    override fun preprocess(request: Request?): RequestContext? { //this is only for query processing and not update processing!
-
-        val context = Context()
-        context.request = request
-        if ((request is QueryRequest) && request.dataset != null) { //FIXME questo ha dato un null error su insert
-            if (request.dataset.namedGraphs.contains(conjContextIRI)) {
-                logger?.info("preprocess triggerato da richiesta sul graph.")
-                return context
-            }
-        }
-        return null
-
-    }
-
 
     override fun getUpdateContexts(): Array<Resource> {
-        Thread.currentThread().stackTrace.forEach { println(it) }
+//        Thread.currentThread().stackTrace.forEach { println(it) }
 
         return arrayOf(conjContextIRI, loisLaneThoughts, marthaKentsThoughts, myThoughts)
     }
@@ -97,12 +94,12 @@ class SituatedInference : Plugin, Preprocessor, ContextUpdateHandler {
     ) {
         println(context?.stringValue())
         if (context == null) return
-        val repository = repoStore.getRepositoryForContext(context)
-        val statement = repository.valueFactory.createStatement(subject, predicate, obj, context)
+        val repositoryForContext = RepoStore.getRepositoryForContext(context)
+        val statement = repositoryForContext.valueFactory.createStatement(subject, predicate, obj, context)
 
         println(statement)
 
-        val connection = repository.connection
+        val connection = repositoryForContext.connection
         try {
             connection.add(statement)
             connection.getStatements(null, null, null).forEach() { println(it) }
@@ -113,56 +110,111 @@ class SituatedInference : Plugin, Preprocessor, ContextUpdateHandler {
 
     }
 
-//    override fun transactionStarted(p0: PluginConnection?) {
-//    }
+    override fun preprocess(request: Request?): RequestContext? { //this is only for query processing and not update processing!
+        if (request is QueryRequest) {
+            val options = request.options
+            if (options is SystemPluginOptions) {
+                val connection =
+                    options.getOption(SystemPluginOptions.Option.ACCESS_REPOSITORY_CONNECTION) as? AbstractRepositoryConnection
+                val inferencer = options.getOption(SystemPluginOptions.Option.ACCESS_INFERENCER) as? AbstractInferencer
+                return NamedInferenceContext().apply {
+                    this.request = request
+                    this.repositoryConnection = connection
+                    this.inferencer = inferencer
+                }
+            }
 
-//    override fun transactionCommit(pluginConnection: PluginConnection?) {
-//        isUpdatingContext = true
-//        try {
-//            logger?.info("isAdd allowed? ${pluginConnection?.repository?.isAddAllowed}")
-//            logger?.info(statementsToAdd.toString())
-//            if (statementsToAdd.isNotEmpty() && pluginConnection?.repository?.isAddAllowed == true) {
-//                logger?.info("Im in :P")
-//                statementsToAdd.forEach {
-//                    pluginConnection?.repository?.addStatement(it.subject, it.predicate, it.`object`, it.context)
-//                }
+//           val (conjGraphs, otherGraphs) = request.dataset.namedGraphs.filter { it.isIRI }.also { println(this) }
+//                .partition { it.namespace.contains(Regex("conj:")) }
+//
+//            val dataset = SimpleDataset().apply {
+//                request.dataset.defaultGraphs.forEach { iri -> addDefaultGraph(iri) }
+//                otherGraphs.forEach { iri -> addNamedGraph(iri) }
+//
 //            }
-//        } finally {
-//            isUpdatingContext = false
+//            return NamedInferenceContext().apply { this.request = request }
+
+        }
+        return null
+    }
+
+    override fun estimate(p0: Long, p1: Long, p2: Long, p3: Long, p4: PluginConnection?, p5: RequestContext?): Double {
+        TODO("Not yet implemented")
+    }
+
+
+    override fun interpret(
+        subjectId: Long,
+        predicateId: Long,
+        objectId: Long,
+        contextId: Long,
+        pluginConnection: PluginConnection,
+        requestContext: RequestContext?
+    ): StatementIterator {
+        if (requestContext !is NamedInferenceContext) return StatementIterator.FALSE();
+
+
+//        val (subj, pred, obj) = arrayOf(subjectId, predicateId, objectId).map {pluginConnection.entities.get(it)}
+
+        val obj = pluginConnection.entities.get(objectId)
+        if (obj is IRI && obj in namedGraphsToHandle) {
+            TODO("handle named graph as object in a statement")
+        }
+
+
+        //TODO I have to make a new model with inference disabled with the ground truth and the requested named graphs
+        //TODO Afterwards, forward the query to this new model and return the statements
+        val entities = pluginConnection.entities
+//        val namedGraphsIds = namedGraphsToHandle.map { entities.resolve(it) }
+//        val model = DynamicModelFactory().createEmptyModel();
+//
+
+
+//
+//        val statementIterator = pluginConnection.statements.get(0, 0, 0)
+//        while (statementIterator.next()) {
+//            statementIterator.let {
+//                val subject = entities.get(it.subject) as Resource
+//                val predicate = entities.get(it.predicate) as IRI
+//                val `object` = entities.get(it.`object`) as Value
+//                val context = entities.get(it.context) as Resource
+//                val statement = statement(subject, predicate, `object`, context)
+//                model.add(statement)
+//            }
 //        }
-//    }
-
-//    override fun transactionCompleted(p0: PluginConnection?) {
-//    }
 //
-//    override fun transactionAborted(p0: PluginConnection?) {
-//    }
-
-//    override fun getPredicatesToListenFor(): LongArray {
-//        return predicatesToListenFor.toLongArray()
-//    }
-
-//    override fun interpretUpdate(
-//        subject: Long,
-//        predicate: Long,
-//        obj: Long,
-//        context: Long,
-//        isAddition: Boolean,
-//        isExplicit: Boolean,
-//        pluginConnection: PluginConnection?
-//    ): Boolean {
-//        if (pluginConnection == null) return false
-//
-//        pluginConnection.properties.getRepositorySetting("")
-//
-//        val entities = pluginConnection.entities;
-//        when (predicate) {
-//            entities.resolve(registerPredicateIRI) -> registerPredicateId(obj)
+//        namedGraphsToHandle.forEach { iri ->
+//            val repo = RepoStore.getRepositoryForContext(iri)
+//            val connection = repo.connection
+//            connection.getStatements(null, null, null).forEach {
+//                model.add(it)
+//            }
 //        }
 //
-//    }
-//
-//    private fun registerPredicateId(id: Long) {
-//
-//    }
+//        val virtualRepo = SailRepository(NativeStore());
+        return StatementIterator.FALSE()
+    }
+
+    override fun shouldPostprocess(requestContext: RequestContext?): Boolean {
+        if (requestContext !is NamedInferenceContext)
+            return false;
+
+
+        val request = requestContext.request
+        if (request is QueryRequest) {
+            return request.dataset?.namedGraphs?.any { it in namedGraphsToHandle } ?: false //TODO remove the null check dataset should be defined
+        }
+
+        return false
+
+    }
+
+    override fun postprocess(bindingSet: BindingSet?, requestContext: RequestContext?): BindingSet {
+        TODO("Not yet implemented")
+    }
+
+    override fun flush(p0: RequestContext?): MutableIterator<BindingSet> {
+        TODO("Not yet implemented")
+    }
+
 }
