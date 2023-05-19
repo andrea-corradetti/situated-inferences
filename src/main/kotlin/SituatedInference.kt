@@ -1,41 +1,35 @@
-import com.ontotext.GraphDBConfigParameters
-import com.ontotext.graphdb.Config
-import com.ontotext.trree.AbstractInferencer
-import com.ontotext.trree.AbstractRepositoryConnection
-import com.ontotext.trree.RepositoryProperties
 import com.ontotext.trree.sdk.*
-import com.ontotext.trree.sdk.impl.RepositorySettings
-import org.eclipse.rdf4j.model.IRI
-import org.eclipse.rdf4j.model.Resource
-import org.eclipse.rdf4j.model.Value
+import org.eclipse.rdf4j.model.Triple
 import org.eclipse.rdf4j.model.util.Values.iri
-import org.eclipse.rdf4j.query.BindingSet
+import org.eclipse.rdf4j.model.vocabulary.RDF
 import org.slf4j.Logger
 import java.io.File
+import kotlin.properties.Delegates
 
 
-const val UNBOUND_VARIABLE = 0
 const val ANY = 0L
 
-class SituatedInference : Plugin, Preprocessor, ContextUpdateHandler, PatternInterpreter, Postprocessor {
-    private val accessRepositoryConnection = "accessRepositoryConnection"
-    private val accessInferencer = "accessInferencer"
-    private val prefix = "http://example.com/"
-    private val conjContext = prefix + "conj"
-    private val conjContextIRI = iri(conjContext)
-    private val conj = "https://w3id.org/conjectures/"
 
-    //TODO move graph names and IRIs to config file
-    private val registerPredicateIRI = iri(prefix + "registerPredicate")
-    private val loisLaneThoughts = iri("${conj}LoisLaneThoughts")
-    private val marthaKentsThoughts = iri("${conj}MarthaKentsThoughts")
-    private val myThoughts = iri("${conj}myThoughts")
+class SituatedInference : Plugin, StatementListener, PluginTransactionListener {
+    private val shouldInferOnReification: Boolean = true
+    private val shouldInferOnRdfStar: Boolean = true
 
-    private val namedGraphsToHandle =
-        listOf<IRI>(loisLaneThoughts, marthaKentsThoughts, myThoughts) //TODO find a better name
+    //    private val accessRepositoryConnection = "accessRepositoryConnection"
+    //    private val accessInferencer = "accessInferencer"
 
+    private val rdfSubject = iri(RDF.NAMESPACE + "subject")
+    private val rdfPredicate = iri(RDF.NAMESPACE + "predicate")
+    private val rdfObject = iri(RDF.NAMESPACE + "object")
 
-    private val predicatesToListenFor = mutableListOf<Long>()
+    private var rdfSubjectId by Delegates.notNull<Long>()
+    private var rdfPredicateId by Delegates.notNull<Long>()
+    private var rdfObjectId by Delegates.notNull<Long>()
+    private var reificationPredicates by Delegates.notNull<Array<Long>>()
+
+    private val reifiedStatementsId = mutableSetOf<Long>() //REMEMBER TO EMPTY THIS BEFORE EVERY TRANSACTION
+    private val quintuplesToAdd = mutableMapOf<String, Quintuple>()
+    private val situatingStatements = mutableMapOf<String, MutableSet<Quintuple>>()
+
     private var logger: Logger? = null
 
     override fun getName(): String {
@@ -51,17 +45,12 @@ class SituatedInference : Plugin, Preprocessor, ContextUpdateHandler, PatternInt
     }
 
     override fun initialize(initReason: InitReason, pluginConnection: PluginConnection) {
-        val conjContextId = pluginConnection.entities.put(conjContextIRI, Entities.Scope.SYSTEM)
-        println(RepoStore.getAllRepositories())
-//        val registerPredicateId = pluginConnection.entities.put(registerPredicateIRI, Entities.Scope.SYSTEM)
-//        val repositoryIdIRI = iri("http://www.openrdf.org/config/repository#repositoryID")
-//        val repositoryId = pluginConnection.properties.getRepositorySetting(null)
-//        println(repositoryId)
-//        predicatesToListenFor.add(registerPredicateId)
-        logger?.warn("this is printing something")
-
-//        pluginConnection.properties.getRepositorySetting()
-
+        rdfSubjectId = pluginConnection.entities.put(rdfSubject, Entities.Scope.SYSTEM)
+        rdfPredicateId = pluginConnection.entities.put(rdfPredicate, Entities.Scope.SYSTEM)
+        rdfObjectId = pluginConnection.entities.put(rdfObject, Entities.Scope.SYSTEM)
+        reificationPredicates =
+            arrayOf(rdfSubjectId, rdfPredicateId, rdfObjectId) //TODO consider if adding rdf:statement
+        logger?.info("reification predicates ${reificationPredicates.joinToString(",")}")
     }
 
     override fun setFingerprint(p0: Long) {
@@ -77,144 +66,149 @@ class SituatedInference : Plugin, Preprocessor, ContextUpdateHandler, PatternInt
 //        TODO("Not yet implemented")
     }
 
-
-    override fun getUpdateContexts(): Array<Resource> {
-//        Thread.currentThread().stackTrace.forEach { println(it) }
-
-        return arrayOf(conjContextIRI, loisLaneThoughts, marthaKentsThoughts, myThoughts)
-    }
-
-    override fun handleContextUpdate(
-        subject: Resource?,
-        predicate: IRI?,
-        obj: Value?,
-        context: Resource?,
-        isAddition: Boolean,
+    //important using anonymous nodes (prefix "_:" ) will cause duplicate inserts because graphdbs creates new nodes at each insert.
+    override fun statementAdded(
+        subject: Long,
+        predicate: Long,
+        obj: Long,
+        context: Long,
+        isExplicit: Boolean,
         pluginConnection: PluginConnection
-    ) {
-        println(context?.stringValue())
-        if (context == null) return
-        val repositoryForContext = RepoStore.getRepositoryForContext(context)
-        val statement = repositoryForContext.valueFactory.createStatement(subject, predicate, obj, context)
-
-        println(statement)
-
-        val connection = repositoryForContext.connection
-        try {
-            connection.add(statement)
-            connection.getStatements(null, null, null).forEach() { println(it) }
-        } finally {
-            connection.close()
+    ): Boolean {
+        if (shouldInferOnReification && predicate in reificationPredicates) {
+            handleReifiedStatement(subject, predicate, obj)
         }
-//        val contextId = pluginConnection.entities.resolve(context)
 
-    }
+        //FIXME fix this mess with keys.
+        if (shouldInferOnRdfStar) {
+            val objectValue = pluginConnection.entities.get(obj)
+            if (objectValue.isTriple) {
+                val statementKey = makeKeyForQuotingTriple(subject, predicate, obj) + "objQuoted"
+                val objectTriple = objectValue as Triple
+                val quotedStatementKey = makeKeyForQuotedTriple(objectTriple, pluginConnection)
+                quintuplesToAdd.addQuotedTriple(statementKey, objectTriple, pluginConnection)
+                situatingStatements.getOrPut(quotedStatementKey) { mutableSetOf() }.add(Quintuple(subject, predicate, obj))
+                logger?.info("situatingStatements[$quotedStatementKey] - ${situatingStatements[quotedStatementKey]}")
+                logger?.info("quintuplesToAdd[$statementKey] - ${quintuplesToAdd[statementKey]}")
 
-    override fun preprocess(request: Request?): RequestContext? { //this is only for query processing and not update processing!
-        if (request is QueryRequest) {
-            val options = request.options
-            if (options is SystemPluginOptions) {
-                val connection =
-                    options.getOption(SystemPluginOptions.Option.ACCESS_REPOSITORY_CONNECTION) as? AbstractRepositoryConnection
-                val inferencer = options.getOption(SystemPluginOptions.Option.ACCESS_INFERENCER) as? AbstractInferencer
-                return NamedInferenceContext().apply {
-                    this.request = request
-                    this.repositoryConnection = connection
-                    this.inferencer = inferencer
-                }
             }
 
-//           val (conjGraphs, otherGraphs) = request.dataset.namedGraphs.filter { it.isIRI }.also { println(this) }
-//                .partition { it.namespace.contains(Regex("conj:")) }
-//
-//            val dataset = SimpleDataset().apply {
-//                request.dataset.defaultGraphs.forEach { iri -> addDefaultGraph(iri) }
-//                otherGraphs.forEach { iri -> addNamedGraph(iri) }
-//
-//            }
-//            return NamedInferenceContext().apply { this.request = request }
-
+            val subjectValue = pluginConnection.entities.get(subject)
+            if (subjectValue.isTriple) {
+                val statementKey = makeKeyForQuotingTriple(subject, predicate, obj)  + "subjQuoted"
+                val subjectTriple = subjectValue as Triple
+                val quotedStatementKey = makeKeyForQuotedTriple(subjectTriple, pluginConnection)
+                quintuplesToAdd.addQuotedTriple(statementKey, subjectTriple, pluginConnection)
+                situatingStatements.getOrPut(quotedStatementKey) { mutableSetOf() }.add(Quintuple(subject, predicate, obj))
+                logger?.info("situatingStatements[$quotedStatementKey] - ${situatingStatements[quotedStatementKey]}")
+                logger?.info("quintuplesToAdd[$statementKey] - ${quintuplesToAdd[statementKey]}")
+            }
         }
-        return null
+
+        return false //TODO check if this makes any difference
     }
 
-    override fun estimate(p0: Long, p1: Long, p2: Long, p3: Long, p4: PluginConnection?, p5: RequestContext?): Double {
+    private fun makeKeyForQuotedTriple(triple: Triple, pluginConnection: PluginConnection): String {
+        val quotedSubject = pluginConnection.entities.resolve(triple.subject)
+        val quotedPredicate = pluginConnection.entities.resolve(triple.predicate)
+        val quotedObject = pluginConnection.entities.resolve(triple.`object`)
+        return "tripleTriple-$quotedSubject-$quotedPredicate-$quotedObject"
+    }
+
+    private fun MutableMap<String, Quintuple>.addQuotedTriple(
+        statementKey: String, objectTriple: Triple, pluginConnection: PluginConnection
+    ) {
+        this.putIfAbsent(statementKey, Quintuple())
+        this[statementKey]!!.apply {
+            this.subject = pluginConnection.entities.resolve(objectTriple.subject)
+            this.predicate = pluginConnection.entities.resolve(objectTriple.predicate)
+            this.obj = pluginConnection.entities.resolve(objectTriple.`object`)
+            this.conjProvenance = "rs-$statementKey"
+        }
+    }
+
+    private fun makeKeyForQuotingTriple(subject: Long, pred: Long, obj: Long) = "triple-$subject-$pred-$obj"
+
+    private fun handleReifiedStatement(subject: Long, predicate: Long, obj: Long) {
+        val statementKey = makeKeyForReifiedStatement(subject)
+        logger?.info("statement key $statementKey")
+
+        quintuplesToAdd.putIfAbsent(statementKey, Quintuple())
+        quintuplesToAdd[statementKey]!!.conjProvenance =
+            "reified$subject" //THIS IS A USELESS WRITE 2 TIMES OUT OF THREE
+        when (predicate) {
+            rdfSubjectId -> quintuplesToAdd[statementKey]!!.subject = obj
+            rdfPredicateId -> quintuplesToAdd[statementKey]!!.predicate = obj
+            rdfObjectId -> quintuplesToAdd[statementKey]!!.obj = obj
+        }
+        reifiedStatementsId.add(subject)
+    }
+
+    private fun makeKeyForReifiedStatement(subject: Long) = "statement-${subject}"
+
+    private fun getSituatingStatementsFor(statementId: Long, pluginConnection: PluginConnection): List<Quintuple> {
+        val statements = mutableListOf<Quintuple>()
+
+        pluginConnection.statements.get(statementId, ANY, ANY).let { iter ->
+            while (iter.next()) {
+                val quintuple = Quintuple(iter.subject, iter.predicate, iter.`object`, iter.context, iter.isExplicit)
+                logger?.info("subject is quoted: $quintuple")
+                statements.add(quintuple)
+            }
+        }
+
+        pluginConnection.statements.get(ANY, ANY, statementId).let { iter ->
+            while (iter.next()) {
+                val quintuple = Quintuple(iter.subject, iter.predicate, iter.`object`, iter.context, iter.isExplicit)
+                logger?.info("object is quoted: $quintuple")
+                statements.add(quintuple)
+            }
+        }
+
+        return statements.filter { it.predicate !in reificationPredicates }
+    }
+
+    override fun statementRemoved(p0: Long, p1: Long, p2: Long, p3: Long, p4: Boolean, p5: PluginConnection?): Boolean {
         TODO("Not yet implemented")
     }
 
+    override fun transactionStarted(p0: PluginConnection?) {
+        logger?.info("TRANSACTION STARTED")
+        reifiedStatementsId.clear()
+    }
 
-    override fun interpret(
-        subjectId: Long,
-        predicateId: Long,
-        objectId: Long,
-        contextId: Long,
-        pluginConnection: PluginConnection,
-        requestContext: RequestContext?
-    ): StatementIterator {
-        if (requestContext !is NamedInferenceContext) return StatementIterator.FALSE();
-
-
-//        val (subj, pred, obj) = arrayOf(subjectId, predicateId, objectId).map {pluginConnection.entities.get(it)}
-
-        val obj = pluginConnection.entities.get(objectId)
-        if (obj is IRI && obj in namedGraphsToHandle) {
-            TODO("handle named graph as object in a statement")
+    override fun transactionCommit(pluginConnection: PluginConnection) {
+        logger?.info("TRANSACTION COMMIT")
+        reifiedStatementsId.forEach { statementId ->
+            val situatingQuintuples: List<Quintuple> = getSituatingStatementsFor(statementId, pluginConnection)
+            val statementKey = makeKeyForReifiedStatement(statementId)
+            situatingStatements.getOrPut(statementKey) { mutableSetOf() }.addAll(situatingQuintuples)
         }
 
 
-        //TODO I have to make a new model with inference disabled with the ground truth and the requested named graphs
-        //TODO Afterwards, forward the query to this new model and return the statements
-        val entities = pluginConnection.entities
-//        val namedGraphsIds = namedGraphsToHandle.map { entities.resolve(it) }
-//        val model = DynamicModelFactory().createEmptyModel();
-//
-
-
-//
-//        val statementIterator = pluginConnection.statements.get(0, 0, 0)
-//        while (statementIterator.next()) {
-//            statementIterator.let {
-//                val subject = entities.get(it.subject) as Resource
-//                val predicate = entities.get(it.predicate) as IRI
-//                val `object` = entities.get(it.`object`) as Value
-//                val context = entities.get(it.context) as Resource
-//                val statement = statement(subject, predicate, `object`, context)
-//                model.add(statement)
-//            }
-//        }
-//
-//        namedGraphsToHandle.forEach { iri ->
-//            val repo = RepoStore.getRepositoryForContext(iri)
-//            val connection = repo.connection
-//            connection.getStatements(null, null, null).forEach {
-//                model.add(it)
-//            }
-//        }
-//
-//        val virtualRepo = SailRepository(NativeStore());
-        return StatementIterator.FALSE()
+        //TODO add all situating statements
     }
 
-    override fun shouldPostprocess(requestContext: RequestContext?): Boolean {
-        if (requestContext !is NamedInferenceContext)
-            return false;
-
-
-        val request = requestContext.request
-        if (request is QueryRequest) {
-            return request.dataset?.namedGraphs?.any { it in namedGraphsToHandle } ?: false //TODO remove the null check dataset should be defined
-        }
-
-        return false
+    override fun transactionCompleted(p0: PluginConnection?) {
+        logger?.info("TRANSACTION COMPLETED")
+        logger?.info("situating statements: $situatingStatements}")
 
     }
 
-    override fun postprocess(bindingSet: BindingSet?, requestContext: RequestContext?): BindingSet {
-        TODO("Not yet implemented")
-    }
+    override fun transactionAborted(p0: PluginConnection?) {
+        logger?.info("TRANSACTION ABORTED")
 
-    override fun flush(p0: RequestContext?): MutableIterator<BindingSet> {
-        TODO("Not yet implemented")
     }
-
 }
+
+data class Quintuple( //TODO consider new name
+    var subject: Long? = null,
+    var predicate: Long? = null,
+    var obj: Long? = null,
+    val context: Long? = null,
+    var isExplicit: Boolean? = null,
+    var conjProvenance: String? = null
+)
+
+
+
