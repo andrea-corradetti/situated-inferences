@@ -34,8 +34,10 @@ class SituatedInference : Plugin, StatementListener, PluginTransactionListener {
     private val quintuplesToRemove = mutableListOf<Quintuple>()
     private val situatingStatements = mutableMapOf<String, MutableSet<Quintuple>>()
 
+    private val conjRegex = Regex(".*/conj") //TODO make these more accurate
     private val reifiedRegex = Regex(".*/reified-\\d+")
-    private val contextsRegex = arrayOf(reifiedRegex) //TODO add other regex
+    private val rsRegex = Regex(".*/rs-\\d+")
+    private val contextsRegex = arrayOf(reifiedRegex, rsRegex) //TODO check if some regex is missing
 
     private var logger: Logger? = null
 
@@ -55,8 +57,7 @@ class SituatedInference : Plugin, StatementListener, PluginTransactionListener {
         rdfSubjectId = pluginConnection.entities.put(rdfSubject, Entities.Scope.SYSTEM)
         rdfPredicateId = pluginConnection.entities.put(rdfPredicate, Entities.Scope.SYSTEM)
         rdfObjectId = pluginConnection.entities.put(rdfObject, Entities.Scope.SYSTEM)
-        reificationPredicates =
-            arrayOf(rdfSubjectId, rdfPredicateId, rdfObjectId) //TODO consider if adding rdf:statement
+        reificationPredicates = arrayOf(rdfSubjectId, rdfPredicateId, rdfObjectId) //TODO consider adding rdf:statement
         logger?.info("reification predicates ${reificationPredicates.joinToString(",")}")
     }
 
@@ -101,12 +102,20 @@ class SituatedInference : Plugin, StatementListener, PluginTransactionListener {
             val contexts = getContexts(antecedents)
 
             if (isDefaultGraphSharedKnowledge) {
-                if (contexts.count() == 1) {
-
+                if (contexts.count() == 1 && shouldHandleContext(contexts.first(), pluginConnection)) {
+                    val statementKey = makeKeyForTripleInGraph(subject, predicate, obj, context)
+                    quintuplesToAdd[statementKey] = Quintuple(subject, predicate, obj, contexts.first(), isExplicit)
+                } else {
+                    quintuplesToRemove.add(Quintuple(subject, predicate, obj, context, isExplicit))
                 }
-
             } else {
-
+                val conjContext = contexts.singleOrNull() { shouldHandleContext(it, pluginConnection) }
+                if (conjContext != null) {
+                    val statementKey = makeKeyForTripleInGraph(subject, predicate, obj, conjContext)
+                    quintuplesToAdd[statementKey] = Quintuple(subject, predicate, obj, conjContext, isExplicit)
+                } else {
+                    quintuplesToRemove.add(Quintuple(subject, predicate, obj, context, isExplicit))
+                }
             }
 
         }
@@ -116,15 +125,29 @@ class SituatedInference : Plugin, StatementListener, PluginTransactionListener {
 
 
 
-        return false //TODO check if this makes any difference
+        return false //the return value seems to be useless
+    }
+
+    private fun makeKeyForTripleInGraph(subject: Long, predicate: Long, obj: Long, context: Long) =
+        "triple-$subject-$predicate-$obj-$context"
+
+    private fun shouldHandleContext(contextId: Long, pluginConnection: PluginConnection): Boolean {
+        // contexts contiene solo un unico valore G = "rs-"+ qualcosa oppure "reified-"+qualcosa
+        // contexts contiene solo un unico valore G = "conj-"+qualcosa
+        val contextValue = pluginConnection.entities.get(contextId)
+        val iri = contextValue.stringValue()
+        if (shouldInferOnNamedGraphs && conjRegex matches iri)
+            return true
+
+        if (contextsRegex.any {it matches iri})
+            return true
+
+        return false
     }
 
     //FIXME fix this mess with keys and remove duplication.
     private fun handleInferOnRdfStar(
-        subject: Long,
-        predicate: Long,
-        obj: Long,
-        pluginConnection: PluginConnection
+        subject: Long, predicate: Long, obj: Long, pluginConnection: PluginConnection
     ) {
         val objectValue = pluginConnection.entities.get(obj)
         if (objectValue.isTriple) {
@@ -132,8 +155,7 @@ class SituatedInference : Plugin, StatementListener, PluginTransactionListener {
             val statementKey = makeKeyForQuotingTriple(subject, predicate, obj) + "objQuoted"
             val quotedStatementKey = makeKeyForQuotedTriple(objectTriple, pluginConnection)
             quintuplesToAdd.addQuotedTriple(statementKey, objectTriple, pluginConnection)
-            situatingStatements.getOrPut(quotedStatementKey) { mutableSetOf() }
-                .add(Quintuple(subject, predicate, obj))
+            situatingStatements.getOrPut(quotedStatementKey) { mutableSetOf() }.add(Quintuple(subject, predicate, obj))
             logger?.info("quintuplesToAdd[$statementKey] - ${quintuplesToAdd[statementKey]}")
             logger?.info("situatingStatements[$quotedStatementKey] - ${situatingStatements[quotedStatementKey]}")
         }
@@ -145,8 +167,7 @@ class SituatedInference : Plugin, StatementListener, PluginTransactionListener {
             val statementKey = makeKeyForQuotingTriple(subject, predicate, obj) + "subjQuoted"
             val quotedStatementKey = makeKeyForQuotedTriple(subjectTriple, pluginConnection)
             quintuplesToAdd.addQuotedTriple(statementKey, subjectTriple, pluginConnection)
-            situatingStatements.getOrPut(quotedStatementKey) { mutableSetOf() }
-                .add(Quintuple(subject, predicate, obj))
+            situatingStatements.getOrPut(quotedStatementKey) { mutableSetOf() }.add(Quintuple(subject, predicate, obj))
             logger?.info("quintuplesToAdd[$statementKey] - ${quintuplesToAdd[statementKey]}")
             logger?.info("situatingStatements[$quotedStatementKey] - ${situatingStatements[quotedStatementKey]}")
         }
@@ -160,7 +181,7 @@ class SituatedInference : Plugin, StatementListener, PluginTransactionListener {
         val quotedSubject = pluginConnection.entities.resolve(triple.subject)
         val quotedPredicate = pluginConnection.entities.resolve(triple.predicate)
         val quotedObject = pluginConnection.entities.resolve(triple.`object`)
-        return "triple-$quotedSubject-$quotedPredicate-$quotedObject"
+        return "triple-$quotedSubject-$quotedPredicate-$quotedObject" //FIXME consider a different key to differentiate from quoting triples
     }
 
     private fun MutableMap<String, Quintuple>.addQuotedTriple(
@@ -179,15 +200,14 @@ class SituatedInference : Plugin, StatementListener, PluginTransactionListener {
 
     private fun makeKeyForQuotingTriple(subject: Long, pred: Long, obj: Long) = "triple-$subject-$pred-$obj"
 
+
     private fun handleReifiedStatement(subject: Long, predicate: Long, obj: Long, pluginConnection: PluginConnection) {
         val statementKey = makeKeyForReifiedStatement(subject)
         logger?.info("statement key $statementKey")
 
-        val contextUri = iri(conjBaseUri + "reified-$subject")
-
-        quintuplesToAdd.putIfAbsent(statementKey, Quintuple())
-        quintuplesToAdd[statementKey]!!.context =
-            pluginConnection.entities.put(contextUri, Entities.Scope.SYSTEM) //THIS IS A USELESS WRITE 2 TIMES OUT OF THREE
+        val contextIri = iri(conjBaseUri + "reified-$subject")
+        val contextId = pluginConnection.entities.put(contextIri, Entities.Scope.SYSTEM)
+        quintuplesToAdd.putIfAbsent(statementKey, Quintuple(context = contextId))
         when (predicate) {
             rdfSubjectId -> quintuplesToAdd[statementKey]!!.subject = obj
             rdfPredicateId -> quintuplesToAdd[statementKey]!!.predicate = obj
@@ -250,6 +270,7 @@ class SituatedInference : Plugin, StatementListener, PluginTransactionListener {
 
     }
 }
+
 
 data class Quintuple( //TODO consider new name
     var subject: Long? = null,
