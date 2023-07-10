@@ -7,40 +7,25 @@ import com.ontotext.trree.sdk.StatementIterator;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
-import proof.*;
+import proof.ProofPlugin;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class ExplainIter extends StatementIterator implements ReportSupportedSolution {
     private final Logger logger;
     private final Quad statementToExplain;
+    private final ContextResolver contextResolver;
     AbstractInferencer inferencer;
     AbstractRepositoryConnection repositoryConnection; // connection to the raw data to get only the AXIOM statements ???
     long reificationId; //id of bnode representing the explain operation
-
-    public void setInferencer(AbstractInferencer inferencer) {
-        this.inferencer = inferencer;
-    }
-
-    public void setRepositoryConnection(AbstractRepositoryConnection repositoryConnection) {
-        this.repositoryConnection = repositoryConnection;
-    }
-
     boolean isExplicit;
     boolean isDerivedFromSameAs;
     long explicitContext; //FIXME possibly misguiding name
-
     Set<Solution> solutions = new LinkedHashSet<>();
-
-    public Set<Solution> getSolutions() {
-        return solutions;
-    }
-
     Iterator<Solution> iter;
     Solution currentSolution = null;
     int currentPremiseNo = -1;
-    long[] values = null;
+    Quad values;
 
     public ExplainIter(SituatedInferenceContext requestContext, long reificationId, long explainId, Quad statementToExplain, ExplicitStatementProps explicitStatementProps) {
         this.reificationId = reificationId;
@@ -55,30 +40,17 @@ public class ExplainIter extends StatementIterator implements ReportSupportedSol
         this.inferencer = requestContext.getInferencer();
         this.repositoryConnection = requestContext.getRepositoryConnection();
         this.logger = requestContext.getLogger();
-    }
-
-    public ExplainIter(SituatedInferenceContext requestContext, AbstractInferencer inferencer, long reificationId, long explainId, Quad statementToExplain, ExplicitStatementProps explicitStatementProps) {
-        this.reificationId = reificationId;
-        this.subject = this.reificationId;
-        this.predicate = explainId;
-
-        this.statementToExplain = statementToExplain;
-
-        this.isExplicit = explicitStatementProps.isExplicit;
-        this.isDerivedFromSameAs = explicitStatementProps.isDerivedFromSameAs;
-        this.explicitContext = explicitStatementProps.explicitContext;
-        this.inferencer = inferencer;
-        this.repositoryConnection = requestContext.getRepositoryConnection();
-        this.logger = requestContext.getLogger();
+        this.contextResolver = new ContextResolver(repositoryConnection);
         this.init();
     }
 
-
-
+    public Set<Solution> getSolutions() {
+        return solutions;
+    }
 
     public void init() {
         if (isExplicit) {
-            long[] antecedent = {statementToExplain.subject, statementToExplain.predicate, statementToExplain.object, explicitContext};
+            Quad antecedent = new Quad(statementToExplain.subject, statementToExplain.predicate, statementToExplain.object, explicitContext, 0);
             currentSolution = new Solution("explicit", List.of(antecedent));
             currentPremiseNo = 0;
             iter = getEmptySolutionIterator();
@@ -129,7 +101,7 @@ public class ExplainIter extends StatementIterator implements ReportSupportedSol
 
                         logger.debug("Iter default context = " + antecedent.context);
 
-                        Set<Quad> antecedentWithAllContexts = getAntecedentWithAllContexts(antecedent);
+                        Set<Quad> antecedentWithAllContexts = contextResolver.getAntecedentWithAllContexts(new Quad(antecedent.subj, antecedent.pred, antecedent.obj, antecedent.context, antecedent.status));
                         logger.debug("antecedents with all contexts " + antecedentWithAllContexts);
 
                         boolean isStatementInSameContext = antecedentWithAllContexts.stream().anyMatch(quad -> quad.context == statementToExplain.context);
@@ -171,30 +143,11 @@ public class ExplainIter extends StatementIterator implements ReportSupportedSol
             return false;
         }
 
-        List<long[]> antecedentsAsArrays = antecedents.stream().map(quad -> new long[]{quad.subject, quad.predicate, quad.object, quad.context}).collect(Collectors.toList());
-        Solution solution = new Solution(ruleName, antecedentsAsArrays);
+//        List<long[]> antecedentsAsArrays = antecedents.stream().map(quad -> new long[]{quad.subject, quad.predicate, quad.object, quad.context}).collect(Collectors.toList());
+        Solution solution = new Solution(ruleName, antecedents.stream().toList());
         boolean added = solutions.add(solution);
         logger.debug(added ? "added" : "already added");
         return false;
-    }
-//
-//    private boolean areAntecedentsInScope(Quad quad) {
-//        inferencer.isSupported(quad.subject, quad.predicate, quad.object, 0, 0, this);
-//    }
-
-    private Set<Quad> getAntecedentWithAllContexts(StatementIdIterator antecedent) {
-        Set<Quad> antecedentsWithAllContexts = new HashSet<>();
-        antecedentsWithAllContexts.add(new Quad(antecedent.subj, antecedent.pred, antecedent.obj, antecedent.context, antecedent.status));
-        try (StatementIdIterator ctxIter = repositoryConnection.getStatements(antecedent.subj, antecedent.pred, antecedent.obj, true, 0, ProofPlugin.excludeDeletedHiddenInferred)) {
-            logger.debug(String.format("Contexts for %d %d %d", antecedent.subj, antecedent.pred, antecedent.obj));
-            while (ctxIter.hasNext()) {
-                antecedentsWithAllContexts.add(new Quad(ctxIter.subj, ctxIter.pred, ctxIter.obj, ctxIter.context, ctxIter.status));
-                logger.debug(String.valueOf(ctxIter.context));
-                ctxIter.next();
-            }
-            logger.debug("All contexts for antecedent" + antecedentsWithAllContexts);
-        }
-        return antecedentsWithAllContexts;
     }
 
 
@@ -208,8 +161,8 @@ public class ExplainIter extends StatementIterator implements ReportSupportedSol
     @Override
     public boolean next() {
         while (currentSolution != null) {
-            if (currentPremiseNo < currentSolution.premises.size()) {
-                values = currentSolution.premises.get(currentPremiseNo++);
+            if (currentPremiseNo < currentSolution.antecedents.size()) {
+                values = currentSolution.antecedents.get(currentPremiseNo++);
                 return true;
             }
 
