@@ -18,19 +18,19 @@ public class ContextResolver {
         this.repositoryConnection = repositoryConnection;
     }
 
-    public Set<Quad> getAntecedentWithAllContexts(Quad antecedent) {
+    public Set<Quad> getStatementWithAllContexts(Quad statement) {
 //        Logger logger = LoggerFactory.getLogger(this.getClass());
-        Set<Quad> antecedentsWithAllContexts = new HashSet<Quad>();
-        antecedentsWithAllContexts.add(new Quad(antecedent.subject, antecedent.predicate, antecedent.object, antecedent.context, antecedent.status));
-        try (StatementIdIterator ctxIter = repositoryConnection.getStatements(antecedent.subject, antecedent.predicate, antecedent.object, true, 0, ProofPlugin.excludeDeletedHiddenInferred)) {
-            logger.debug(String.format("Contexts for %d %d %d", antecedent.subject, antecedent.predicate, antecedent.object));
+        Set<Quad> statementWithAllContexts = new HashSet<Quad>();
+        statementWithAllContexts.add(new Quad(statement.subject, statement.predicate, statement.object, statement.context, statement.status));
+        try (StatementIdIterator ctxIter = repositoryConnection.getStatements(statement.subject, statement.predicate, statement.object, true, 0, ProofPlugin.excludeDeletedHiddenInferred)) {
+            logger.debug(String.format("Contexts for %d %d %d", statement.subject, statement.predicate, statement.object));
             while (ctxIter.hasNext()) {
-                antecedentsWithAllContexts.add(new Quad(ctxIter.subj, ctxIter.pred, ctxIter.obj, ctxIter.context, ctxIter.status));
+                statementWithAllContexts.add(new Quad(ctxIter.subj, ctxIter.pred, ctxIter.obj, ctxIter.context, ctxIter.status));
                 logger.debug(String.valueOf(ctxIter.context));
                 ctxIter.next();
             }
-            logger.debug("All contexts for antecedent" + antecedentsWithAllContexts);
+            logger.debug("All contexts for antecedent" + statementWithAllContexts);
         }
-        return antecedentsWithAllContexts;
+        return statementWithAllContexts;
     }
 }
