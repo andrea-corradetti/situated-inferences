@@ -21,8 +21,6 @@ internal val insertSituate = """
         GRAPH :G1 {
             :Lassie a :Dog.
         }
-
-        [] conj:situate (:G1 <http://rdf4j.org/schema/rdf4j#nil>). 
     }
 """.trimIndent()
 
@@ -62,7 +60,7 @@ internal val explainLessie = """
         }
     """.trimIndent()
 
-internal val addMaryNG = """
+internal val insertMaryNG = """
         INSERT DATA {
             <urn:childOf> owl:inverseOf <urn:hasChild> .
             graph <urn:family> {
@@ -247,26 +245,6 @@ internal val registeredFns = """
     }
 """.trimIndent()
 
-internal val insertLassieNg = """
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    PREFIX : <http://www.example.com/>
-    PREFIX t: <http://www.example.com/tbox/>
-    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-    
-    INSERT DATA {
-    graph :G1 {
-        :Lassie rdf:type :Dog.        
-    }
-    
-    graph :G2 {
-        :Lassie rdf:type :Dog.        
-    }
-
-        :Dog rdfs:subClassOf :Mammal.
-    }
-
-""".trimIndent()
 
 internal fun explain(subject: String, predicate: String, `object`: String, context: String = "") = """
         PREFIX : <http://www.example.com/>
