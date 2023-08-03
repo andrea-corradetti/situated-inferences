@@ -1,6 +1,8 @@
 package situatedInference
 
 import com.ontotext.trree.StatementIdIterator
+import com.ontotext.trree.StatementIdIterator.AXIOM_STATEMENT_STATUS
+import com.ontotext.trree.StatementIdIterator.SYSTEM_STATEMENT_STATUS
 
 data class Quad(
     @JvmField val subject: Long,
@@ -17,6 +19,10 @@ data class Quad(
         iterator.context,
         iterator.status
     )
+
+    fun isAxiom(): Boolean = status and AXIOM_STATEMENT_STATUS != 0
+
+    fun isSystemStatement(): Boolean = status and SYSTEM_STATEMENT_STATUS != 0
 
     fun isSameTripleAs(other: Quad): Boolean =
         (subject == other.subject) && (predicate == other.predicate) && (`object` == other.`object`)
