@@ -11,7 +11,14 @@ data class Quad(
     @JvmField val context: Long = 0,
     @JvmField val status: Int = 0,
 ) {
-    constructor(array: LongArray) : this(array[0], array[1], array[2], array[3])
+    constructor(array: LongArray) : this(
+        array[0],
+        array[1],
+        array[2],
+        array[3],
+        if (array.size > 4) array[4].toInt() else 0
+    )
+
     constructor(iterator: StatementIdIterator) : this(
         iterator.subj,
         iterator.pred,

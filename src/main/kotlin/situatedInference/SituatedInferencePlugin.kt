@@ -27,7 +27,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
     override fun initialize(reason: InitReason, pluginConnection: PluginConnection) {
         explainId = pluginConnection.entities.put(explainUri, Entities.Scope.SYSTEM)
         situateId = pluginConnection.entities.put(situateUri, Entities.Scope.SYSTEM)
-        logger.debug("explainId $explainId, situateId $situateId")
+        logger.debug("Initialized: explainId $explainId, situateId $situateId")
     }
 
     override fun preprocess(request: Request): RequestContext {
@@ -123,14 +123,13 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
 
         val situationId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
 
-        //TODO change to lazy iterator
-        val statementsInScope = objectsIds.map { contextInScope ->
-            pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, contextInScope).asSequence().toList()
-        }.flatten().toTypedArray()
+        val statementsInScope = objectsIds.asSequence().map { contextInScope ->
+            pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, contextInScope).asSequence()
+        }.flatten()
 
         requestContext.situations[situationId] = SituationIter(
             requestContext, situationId, situateId, 0,      //TODO replace this with list of contexts
-            StatementIterator.create(statementsInScope) //TODO replace iterator with sequence
+            statementsInScope
         ).apply { inferImplicitStatements() }
 
         return StatementIterator.create(
@@ -178,7 +177,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
     override fun transactionCompleted(p0: PluginConnection?) {
     }
 
-
     override fun transactionAborted(p0: PluginConnection?) {
     }
 
@@ -209,7 +207,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
 
 fun StatementIterator.asSequence() = sequence {
     while (next()) {
-        yield(longArrayOf(subject, predicate, `object`, context))
+        yield(Quad(subject, predicate, `object`, context))
     }
 }
 

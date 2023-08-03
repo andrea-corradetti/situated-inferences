@@ -20,7 +20,7 @@ class SituationIter(
     private val situationId: Long,
     private val situatesId: Long,
     private val boundContextId: Long, //FIXME this is useless
-    private val sourceStatements: StatementIterator
+    private val sourceStatements: Sequence<Quad>
 ) : StatementIterator(), AbstractInferencerTask {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
@@ -39,13 +39,8 @@ class SituationIter(
     }
 
     fun inferImplicitStatements() {
-        while (sourceStatements.next()) {
-            doForwardChaining(
-                sourceStatements.subject,
-                sourceStatements.predicate,
-                sourceStatements.`object`,
-                sourceStatements.context
-            )
+        sourceStatements.forEach {
+            doForwardChaining(it.subject, it.predicate, it.`object`, it.context)
         }
     }
 
@@ -137,7 +132,6 @@ class SituationIter(
 
 
     override fun close() { //        result.close()
-        sourceStatements.close()
         storage.clear()
         requestContext.situations.remove(situationId)
     }
@@ -166,9 +160,12 @@ class SituationIter(
         val statementsFromRepo = repositoryConnection.getStatements(subject, predicate, `object`, status)
         val statementsFromStorage = storage.find(subject, predicate, `object`)
         val statementsSequence = statementsFromRepo.asSequence() + statementsFromStorage.asSequence()
-        return statementIdIteratorFromSequence(statementsSequence.filter {
-            it.also { logger.logStatementIfInvalid(it) }.isAxiom()
-        })
+//        val iterator = statementIdIteratorFromSequence(statementsSequence.filter {
+//            it.also { logger.logStatementIfInvalid(it) }.isAxiom()
+//        })
+        val iterator = statementIdIteratorFromSequence(statementsSequence)
+
+        return iterator
     }
 
     override fun getRepStatements(
@@ -178,9 +175,11 @@ class SituationIter(
         val statementsFromRepo = repositoryConnection.getStatements(subject, predicate, `object`, context, status)
         val statementsFromStorage = storage.find(subject, predicate, `object`, context)
         val statementsSequence = statementsFromRepo.asSequence() + statementsFromStorage.asSequence()
-        return statementIdIteratorFromSequence(statementsSequence.filter {
-            it.also { logger.logStatementIfInvalid(it) }.isAxiom()
-        })
+//        val iterator = statementIdIteratorFromSequence(statementsSequence.filter {
+//            it.also { logger.logStatementIfInvalid(it) }.isAxiom()
+//        })
+        val iterator = statementIdIteratorFromSequence(statementsSequence)
+        return iterator
     }
 
 
@@ -227,8 +226,6 @@ fun statementIdIteratorFromSequence(statements: Sequence<Quad>): StatementIdIter
                 found = false
             }
         }
-
-//        override fun hasNext(): Boolean = iterator.hasNext()
 
         override fun close() {}
         override fun changeStatus(p0: Int) {}
