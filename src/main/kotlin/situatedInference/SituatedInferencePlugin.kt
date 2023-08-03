@@ -13,12 +13,8 @@ import kotlin.properties.Delegates
 
 const val UNBOUND = 0L
 
-class SituatedInferencePlugin : PluginBase(), Preprocessor, StatementListener, PluginTransactionListener,
-    PatternInterpreter, ListPatternInterpreter {
-
-    private var repositoryConnection: AbstractRepositoryConnection? = null
-
-    private var implicitStatements = mutableListOf<Quad>()
+class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionListener, PatternInterpreter,
+    ListPatternInterpreter {
 
     private val namespace = "https://w3id.org/conjectures/"
     private val explainUri = iri(namespace + "explain")
@@ -34,38 +30,8 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, StatementListener, P
         logger.debug("explainId $explainId, situateId $situateId")
     }
 
-    override fun statementAdded(
-        subjectId: Long,
-        predicateId: Long,
-        objectId: Long,
-        contextId: Long,
-        isExplicit: Boolean,
-        pluginConnection: PluginConnection,
-    ): Boolean {
-        logger.debug(
-            "statement {} {} {} {} {}",
-            subjectId,
-            predicateId,
-            objectId,
-            contextId,
-            if (isExplicit) "explicit" else "implicit"
-        )
-        if (!isExplicit) {
-            implicitStatements.add(Quad(subjectId, predicateId, objectId, contextId))
-                .also { logger.debug("adding {}", it) }
-        }
-
-        logger.debug("number of implicit statements in add: {}", implicitStatements.count())
-        return true
-    }
-
-    override fun statementRemoved(p0: Long, p1: Long, p2: Long, p3: Long, p4: Boolean, p5: PluginConnection?): Boolean =
-        true
-
     override fun preprocess(request: Request): RequestContext {
-        logger.debug("number of implicit statements in preprocess: {}", implicitStatements.count())
         return SituatedInferenceContext.fromRequest(request, logger)
-            .also { repositoryConnection = it.repositoryConnection }
     }
 
     override fun estimate(p0: Long, p1: Long, p2: Long, p3: Long, p4: PluginConnection?, p5: RequestContext?): Double {
@@ -88,42 +54,8 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, StatementListener, P
             return interpret(subjectId, predicateId, longArrayOf(objectId), contextId, pluginConnection, requestContext)
         }
 
-
-
-
-
-        pluginConnection.entities[objectId].let {
-            if (!it.isBNode && !it.isIRI) {
-                throw PluginException("${it.stringValue()} in object isn't a valid named graph")
-            }
-        }
-
-        logger.debug("number of implicit statements to process: {}", implicitStatements.count())
-
-        requestContext.contextsInScope.add(objectId)
-        logger.debug("Adding {} to contexts in scope", objectId)
-        logger.debug("All contexts in scope {}", requestContext.contextsInScope)
-
-        val implicitStatementsWithSolutions = implicitStatements.associateWith {
-            val bnode = pluginConnection.entities.put(bnode(), REQUEST)
-            val explicitStatementProps = requestContext.repositoryConnection.getExplicitStatementProps(it.asTriple())
-            return@associateWith ExplainIter(requestContext, bnode, explainId, it, explicitStatementProps).solutions
-        }.also { logger.debug("implicitStatementWithSolutions {}", it) }
-
-
-        val (statementsInScope, statementsOutOfScope) = implicitStatementsWithSolutions.entries.partition { (_, solutions) ->
-            solutions.any { it != null && it.areAntecedentsInScope(requestContext.contextsInScope) }
-        }
-
-        logger.debug("statements in scope: {}", statementsInScope)
-        logger.debug("statements out of scope: {}", statementsOutOfScope)
-
-        logger.debug("is add allowed : {}", pluginConnection.repository.isAddAllowed)
-
-        requestContext.repositoryConnection.insertStatementsInScope(statementsInScope)
-        requestContext.repositoryConnection.removeStatementsOutOfScope(statementsOutOfScope)
-
-        return StatementIterator.EMPTY
+        val situation = requestContext.situations[contextId] ?: return null
+        return situation.find(subjectId, predicateId, objectId).toStatementIterator()
     }
 
     private fun Solution.areAntecedentsInScope(contexts: Collection<Long>): Boolean {
@@ -182,31 +114,28 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, StatementListener, P
             return null
         }
 
+        objectsIds.map { pluginConnection.entities[it] }.filter { !it.isBNode && !it.isIRI }.let { values ->
+            if (values.isNotEmpty()) {
+                val message = values.joinToString("\n") { "${it.stringValue()} in object list isn't a valid graph." }
+                throw PluginException(message)
+            }
+        }
+
         val situationId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
+
+        //TODO change to lazy iterator
         val statementsInScope = objectsIds.map { contextInScope ->
-            val iterator = pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, contextInScope)
-            return@map sequenceFromStatementIterator(iterator).toList()
+            pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, contextInScope).asSequence().toList()
         }.flatten().toTypedArray()
 
-        val situationIter = SituationIter(
-            requestContext,
-            situationId,
-            situateId,
-            0,      //TODO replace this with list of contexts
-            StatementIterator.create(statementsInScope)
+        requestContext.situations[situationId] = SituationIter(
+            requestContext, situationId, situateId, 0,      //TODO replace this with list of contexts
+            StatementIterator.create(statementsInScope) //TODO replace iterator with sequence
         ).apply { inferImplicitStatements() }
-        requestContext.situations[situationId] = situationIter
 
-        return StatementIterator.create(objectsIds.map { longArrayOf(situationId, situateId, it, 0L) }.toTypedArray())
-    }
-
-    private fun sequenceFromStatementIterator(iterator: StatementIterator) = generateSequence {
-        if (iterator.next()) {
-            return@generateSequence longArrayOf(
-                iterator.subject, iterator.predicate, iterator.`object`, iterator.context
-            )
-        }
-        return@generateSequence null
+        return StatementIterator.create(
+            objectsIds.map { longArrayOf(situationId, situateId, it, 0L) }.toTypedArray()
+        )
     }
 
 
@@ -241,6 +170,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, StatementListener, P
         }
     }
 
+
     override fun transactionStarted(p0: PluginConnection?) {}
 
     override fun transactionCommit(p0: PluginConnection?) {}
@@ -253,4 +183,40 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, StatementListener, P
     }
 
     private fun Long.isBound(): Boolean = this != 0L
+
+    private fun StatementIdIterator.toStatementIterator(): StatementIterator {
+        return object : StatementIterator() {
+            override fun next(): Boolean {
+                if (this@toStatementIterator.hasNext()) {
+                    subject = this@toStatementIterator.subj
+                    predicate = this@toStatementIterator.pred
+                    `object` = this@toStatementIterator.obj
+                    context = this@toStatementIterator.context
+                    this@toStatementIterator.next()
+                    return true
+                }
+                return false
+
+            }
+
+            override fun close() {
+                this@toStatementIterator.close()
+            }
+        }
+
+    }
+}
+
+fun StatementIterator.asSequence() = sequence {
+    while (next()) {
+        yield(longArrayOf(subject, predicate, `object`, context))
+    }
+}
+
+fun StatementIdIterator.asSequence() = sequence {
+    while (hasNext()) {
+        val quad = Quad(subj, pred, obj, context, status)
+        yield(quad)
+        next()
+    }
 }
