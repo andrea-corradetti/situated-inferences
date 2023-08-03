@@ -1,8 +1,6 @@
 package situatedInference
 
-import com.ontotext.trree.AbstractInferencer
-import com.ontotext.trree.AbstractRepositoryConnection
-import com.ontotext.trree.ReportSupportedSolution
+import com.ontotext.trree.*
 import com.ontotext.trree.query.QueryResultIterator
 import com.ontotext.trree.query.StatementSource
 import com.ontotext.trree.sdk.StatementIterator
@@ -65,6 +63,7 @@ class ExplainIter(
     }
 
 
+    //Triggered by inferencer.isSupported as callback
     override fun report(ruleName: String, queryResultIterator: QueryResultIterator): Boolean {
         logger!!.debug(
             "report rule {} for {},{},{}",
@@ -94,63 +93,6 @@ class ExplainIter(
                             contextResolver.getStatementWithAllContexts(antecedentQuad).map { it.context }.toSet()
 
                         antecedentToContexts[antecedentQuad] = allContextsForAntecedent
-
-                        //TODO if explaining an implicit statement, it will always be empty. quadToExplain.context is -2 and will never match antecedents in graphs.
-
-                        /*    if (statementToExplain.context == SystemGraphs.IMPLICIT_GRAPH.id.toLong()) {
-                            }
-                            val isStatementInSameContext = antecedentWithAllContexts.stream()
-                                .anyMatch { (_, _, _, context1): Quad -> context1 == statementToExplain.context }
-                            if (isStatementInSameContext) {
-                                logger.debug("statement is same context {}", statementToExplain.context)
-                                antecedents.add(
-                                    Quad(
-                                        antecedent.subj,
-                                        antecedent.pred,
-                                        antecedent.obj,
-                                        statementToExplain.context,
-                                        antecedent.status
-                                    )
-                                )
-                            }
-                            val isStatementInDefaultGraph = !isStatementInSameContext && antecedentWithAllContexts.stream()
-                                .anyMatch { (_, _, _, context1): Quad -> context1 == SystemGraphs.EXPLICIT_GRAPH.id.toLong() }
-                            if (ProofPlugin.isSharedKnowledgeInDefaultGraph && isStatementInDefaultGraph) {
-                                logger.debug("statement is in default graph")
-                                antecedents.add(
-                                    Quad(
-                                        antecedent.subj,
-                                        antecedent.pred,
-                                        antecedent.obj,
-                                        SystemGraphs.EXPLICIT_GRAPH.id.toLong(),
-                                        antecedent.status
-                                    )
-                                )
-                            }
-
-                            val isStatementInScope =
-                                isStatementInSameContext || ProofPlugin.isSharedKnowledgeInDefaultGraph && isStatementInDefaultGraph
-                            val isStatementOnlyImplicit = !isStatementInScope && antecedentWithAllContexts.stream()
-                                .allMatch { (_, _, _, context1): Quad -> context1 == SystemGraphs.IMPLICIT_GRAPH.id.toLong() }
-                            if (isStatementOnlyImplicit) {
-                                logger.debug("statement is only implicit")
-                                antecedents.add(
-                                    Quad(
-                                        antecedent.subj,
-                                        antecedent.pred,
-                                        antecedent.obj,
-                                        SystemGraphs.IMPLICIT_GRAPH.id.toLong(),
-                                        antecedent.status
-                                    )
-                                )
-                            }
-                            if (!isStatementInScope && !isStatementOnlyImplicit) {
-                                logger.debug(
-                                    "statement {},{},{} is out of scope", antecedent.subj, antecedent.pred, antecedent.obj
-                                )
-                                return false
-                            }*/
-//                        logger.debug("Saved antecedents {}", antecedents)
                     }
                 }
             }
@@ -171,12 +113,6 @@ class ExplainIter(
             logger.debug(if (added) "added $solution" else "already added $solution")
         }
 
-//        val areAllAntecedentsImplicit =
-//            antecedents.all { quad -> quad.context.toInt() == SystemGraphs.IMPLICIT_GRAPH.id }
-//        if (areAllAntecedentsImplicit) {
-//            logger.debug("All antecedents are implicit")
-//            return false
-//        }
         return false
     }
 
