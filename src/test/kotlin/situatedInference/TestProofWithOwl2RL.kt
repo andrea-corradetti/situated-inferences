@@ -22,8 +22,8 @@ class TestProofWithOwl2RL {
         connection.prepareTupleQuery(situateMary).evaluate().use { result ->
             val resultList = result.toList()
             println("result for situate:")
-            val message = resultList.joinToString("\n") {
-                it.joinToString(" ") { "${it.name}: ${it.value}" }
+            val message = resultList.joinToString("\n") { bindingSet ->
+                bindingSet.joinToString(" ") { "${it.name}: ${it.value}" }
             }
             print(message)
             assertEquals(10, resultList.count(), "Results situated correctly")

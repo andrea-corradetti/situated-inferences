@@ -69,8 +69,8 @@ class SituationIter(
                     storageIterator.pred,
                     storageIterator.obj,
                     if (storageIterator.status and SYSTEM_STATEMENT_STATUS != 0) storageIterator.context else 0,
-                    0,
-                    this
+                    0,      //infer with all rules
+                    this    //call back overridden methods in this class
                 ) // this will call back ruleFired which is overridden below
             } else {
                 logger.warn("Inference is not enabled - skipping inference")
@@ -160,12 +160,7 @@ class SituationIter(
         val statementsFromRepo = repositoryConnection.getStatements(subject, predicate, `object`, status)
         val statementsFromStorage = storage.find(subject, predicate, `object`)
         val statementsSequence = statementsFromRepo.asSequence() + statementsFromStorage.asSequence()
-//        val iterator = statementIdIteratorFromSequence(statementsSequence.filter {
-//            it.also { logger.logStatementIfInvalid(it) }.isAxiom()
-//        })
-        val iterator = statementIdIteratorFromSequence(statementsSequence)
-
-        return iterator
+        return statementIdIteratorFromSequence(statementsSequence.filter { logger.logStatementIfInvalid(it); it.isAxiom() })
     }
 
     override fun getRepStatements(
@@ -175,11 +170,7 @@ class SituationIter(
         val statementsFromRepo = repositoryConnection.getStatements(subject, predicate, `object`, context, status)
         val statementsFromStorage = storage.find(subject, predicate, `object`, context)
         val statementsSequence = statementsFromRepo.asSequence() + statementsFromStorage.asSequence()
-//        val iterator = statementIdIteratorFromSequence(statementsSequence.filter {
-//            it.also { logger.logStatementIfInvalid(it) }.isAxiom()
-//        })
-        val iterator = statementIdIteratorFromSequence(statementsSequence)
-        return iterator
+        return statementIdIteratorFromSequence(statementsSequence.filter { logger.logStatementIfInvalid(it); it.isAxiom() })
     }
 
 
@@ -212,6 +203,10 @@ fun sequenceFromStatementIdIterators(vararg iterators: StatementIdIterator): Seq
 fun statementIdIteratorFromSequence(statements: Sequence<Quad>): StatementIdIterator {
     return object : StatementIdIterator() {
         val iterator = statements.iterator()
+
+        init {
+            next()
+        }
 
         override fun next() {
             if (iterator.hasNext()) {

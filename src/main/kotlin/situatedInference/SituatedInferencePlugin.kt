@@ -17,16 +17,16 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
     ListPatternInterpreter {
 
     private val namespace = "https://w3id.org/conjectures/"
-    private val explainUri = iri(namespace + "explain")
-    private val situateUri = iri(namespace + "situate")
+    private val explainIri = iri(namespace + "explain")
+    private val situateIri = iri(namespace + "situate")
     private var explainId by Delegates.notNull<Long>()
     private var situateId by Delegates.notNull<Long>()
 
     override fun getName() = "Situated-Inference"
 
     override fun initialize(reason: InitReason, pluginConnection: PluginConnection) {
-        explainId = pluginConnection.entities.put(explainUri, Entities.Scope.SYSTEM)
-        situateId = pluginConnection.entities.put(situateUri, Entities.Scope.SYSTEM)
+        explainId = pluginConnection.entities.put(explainIri, Entities.Scope.SYSTEM)
+        situateId = pluginConnection.entities.put(situateIri, Entities.Scope.SYSTEM)
         logger.debug("Initialized: explainId $explainId, situateId $situateId")
     }
 
