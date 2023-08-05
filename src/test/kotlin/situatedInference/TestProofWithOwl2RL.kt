@@ -26,7 +26,7 @@ class TestProofWithOwl2RL {
                 bindingSet.joinToString(" ") { "${it.name}: ${it.value}" }
             }
             print(message)
-            assertEquals(10, resultList.count(), "Results situated correctly")
+            assertEquals(23, resultList.count(), "Results situated correctly")
         }
     }
 
