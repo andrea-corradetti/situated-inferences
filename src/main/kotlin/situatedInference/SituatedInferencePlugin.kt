@@ -1,13 +1,11 @@
 package situatedInference
 
-import com.ontotext.trree.AbstractRepository.IMPLICIT_GRAPH
 import com.ontotext.trree.AbstractRepositoryConnection
 import com.ontotext.trree.StatementIdIterator
 import com.ontotext.trree.sdk.*
 import com.ontotext.trree.sdk.Entities.Scope.REQUEST
 import org.eclipse.rdf4j.model.util.Values.bnode
 import org.eclipse.rdf4j.model.util.Values.iri
-import proof.ProofPlugin.excludeDeletedHiddenInferred
 import kotlin.properties.Delegates
 
 
@@ -30,9 +28,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
         logger.debug("Initialized: explainId $explainId, situateId $situateId")
     }
 
-    override fun preprocess(request: Request): RequestContext {
-        return SituatedInferenceContext.fromRequest(request, logger)
-    }
+    override fun preprocess(request: Request): RequestContext = SituatedInferenceContext.fromRequest(request, logger)
 
     override fun estimate(p0: Long, p1: Long, p2: Long, p3: Long, p4: PluginConnection?, p5: RequestContext?): Double {
         return 1.0 //TODO
@@ -57,40 +53,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
         val situation = requestContext.situations[contextId] ?: return null
         return situation.find(subjectId, predicateId, objectId).toStatementIterator()
     }
-
-    private fun Solution.areAntecedentsInScope(contexts: Collection<Long>): Boolean {
-        return contexts.any { context -> antecedents.all { it.context == context } }
-    }
-
-    private fun AbstractRepositoryConnection.insertStatementsInScope(
-        statementsInScope: List<Map.Entry<Quad, MutableSet<Solution?>>>
-    ) {
-        statementsInScope.forEach { (quad, solutions) ->
-            val contextsForQuad = solutions.filterNotNull()
-                .fold(listOf<Long>()) { acc, solution -> acc + solution.antecedents.map { it.context } }
-                .filterNot { it.toInt() == IMPLICIT_GRAPH }
-            contextsForQuad.forEach { context ->
-                putStatement(
-                    quad.subject,
-                    quad.predicate,
-                    quad.`object`,
-                    context,
-                    0,
-                )
-            }
-        }
-    }
-
-    private fun AbstractRepositoryConnection.removeStatementsOutOfScope(
-        statementsOutOfScope: List<Map.Entry<Quad, MutableSet<Solution?>>>
-    ) {
-        statementsOutOfScope.forEach { (quad, _) ->
-            removeStatements(
-                quad.subject, quad.predicate, quad.`object`
-            )
-        }
-    }
-
 
     override fun estimate(
         p0: Long, p1: Long, p2: LongArray?, p3: Long, p4: PluginConnection?, p5: RequestContext?
@@ -127,9 +89,8 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
             pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, contextInScope).asSequence()
         }.flatten()
 
-        requestContext.situations[situationId] = SituationIter(
-            requestContext, situationId, situateId, 0,      //TODO replace this with list of contexts
-            statementsInScope
+        requestContext.situations[situationId] = Situation(
+            requestContext, situationId, situateId, objectsIds.toSet(), statementsInScope
         ).apply { inferImplicitStatements() }
 
         return StatementIterator.create(
@@ -209,12 +170,14 @@ fun StatementIterator.asSequence() = sequence {
     while (next()) {
         yield(Quad(subject, predicate, `object`, context))
     }
-}
+    this@asSequence.close()
+}.constrainOnce()
+
 
 fun StatementIdIterator.asSequence() = sequence {
     while (hasNext()) {
-        val quad = Quad(subj, pred, obj, context, status)
-        yield(quad)
+        yield(Quad(subj, pred, obj, context, status))
         next()
     }
-}
+    this@asSequence.close()
+}.constrainOnce()

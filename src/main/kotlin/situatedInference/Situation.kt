@@ -9,32 +9,24 @@ import com.ontotext.trree.plugin.provenance.Storage
 import com.ontotext.trree.sdk.Entities.Type.LITERAL
 import com.ontotext.trree.sdk.Entities.Type.URI
 import com.ontotext.trree.sdk.PluginException
-import com.ontotext.trree.sdk.StatementIterator
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-//FIXME there is no reason for this to be an iterator
 
-class SituationIter(
+class Situation(
     private val requestContext: SituatedInferenceContext,
     private val situationId: Long,
     private val situatesId: Long,
-    private val boundContextId: Long, //FIXME this is useless
+    private val boundContexts: Set<Long>,
     private val sourceStatements: Sequence<Quad>
-) : StatementIterator(), AbstractInferencerTask {
+) : AbstractInferencerTask {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private val storage: Storage = MemoryStorage()
     private val inferencer = requestContext.inferencer
     private val repositoryConnection = requestContext.repositoryConnection
 
-    init {
-        subject = situationId
-        predicate = situatesId
-        `object` = boundContextId
-    }
-
-    fun getStatementsIterator(): StatementIdIterator {
+    fun getBottomIterator(): StatementIdIterator {
         return storage.bottom()
     }
 
@@ -44,50 +36,52 @@ class SituationIter(
         }
     }
 
+
+    //FIXME same triples with different contexts are duplicated in storage
     private fun doForwardChaining(subject: Long, predicate: Long, `object`: Long, context: Long) {
         val storageIterator = storage.bottom()
         storage.add(
             subject, predicate, `object`, context, EXPLICIT_STATEMENT_STATUS
         ) //TODO possibly should be implicit status
         logger.debug("forward chaining added ${getPrettyStringForTriple(subject, predicate, `object`)}")
-        while (storageIterator.hasNext()) {
+        storageIterator.asSequence().forEach {
             if (inferencer.inferStatementsFlag) {
                 logger.debug(
                     """Running inference with {} {} {}
                         | values : {} {} {}
                     """.trimMargin(),
-                    storageIterator.subj,
-                    storageIterator.pred,
-                    storageIterator.obj,
-                    getStringValue(storageIterator.subj),
-                    getStringValue(storageIterator.pred),
-                    getStringValue(storageIterator.obj)
+                    it.subject,
+                    it.predicate,
+                    it.`object`,
+                    getStringValue(it.subject),
+                    getStringValue(it.predicate),
+                    getStringValue(it.`object`)
                 )
 
                 inferencer.doInference(
-                    storageIterator.subj,
-                    storageIterator.pred,
-                    storageIterator.obj,
-                    if (storageIterator.status and SYSTEM_STATEMENT_STATUS != 0) storageIterator.context else 0,
+                    it.subject,
+                    it.predicate,
+                    it.`object`,
+                    if (it.isSystemStatement()) it.context else 0,
                     0,      //infer with all rules
                     this    //call back overridden methods in this class
                 ) // this will call back ruleFired which is overridden below
             } else {
                 logger.warn("Inference is not enabled - skipping inference")
             }
-            storageIterator.next()
         }
-        storageIterator.close()
     }
 
     private fun getStringValue(entityId: Long?): String {
-        if (entityId == null) return "null"
-        if (entityId == 0L) return "unbound"
-        return try {
-            requestContext.repositoryConnection.entityPoolConnection.entities[entityId].stringValue()
-        } catch (e: Exception) {
-            logger.debug(e.message)
-            "invalid id"
+        return when (entityId) {
+            null -> "null"
+            0L -> "unbound"
+            else -> try {
+                requestContext.repositoryConnection.entityPoolConnection.entities[entityId].stringValue()
+            } catch (e: Exception) {
+                logger.debug(e.message)
+                "invalid id"
+            }
         }
     }
 
@@ -113,27 +107,23 @@ class SituationIter(
         if (statementIsAxiom(subject, predicate, `object`)) {
             logger.debug(
                 "Rule fired but statement already existing as axiom ${
-                    getPrettyStringForTriple(
-                        subject, predicate, `object`
-                    )
+                    getPrettyStringForTriple(subject, predicate, `object`)
                 }"
             )
-        } else {
+        }
+//        else if (storage.contains(subject, predicate, `object`, context)) {
+//            logger.debug(
+//                "Rule fired but statement already already in storage ${
+//                    getPrettyStringForTriple(subject, predicate, `object`)
+//                }"
+//            )
+//        }
+        else {
             storage.add(subject, predicate, `object`, context, status)
             logger.debug(
                 "Rule fired and adding inferred statement ${getPrettyStringForTriple(subject, predicate, `object`)}"
             )
         }
-    }
-
-    override fun next(): Boolean {
-        return false
-    }
-
-
-    override fun close() { //        result.close()
-        storage.clear()
-        requestContext.situations.remove(situationId)
     }
 
     private fun statementIsAxiom(subject: Long, predicate: Long, `object`: Long): Boolean {
@@ -143,6 +133,9 @@ class SituationIter(
             return iter.asSequence().any { it.isAxiom() }
         }
     }
+
+    private fun Storage.contains(subject: Long, predicate: Long, `object`: Long, context: Long): Boolean =
+        this.find(subject, predicate, `object`, context).asSequence().any()
 
     override fun doInference(
         subject: Long,
@@ -160,7 +153,7 @@ class SituationIter(
         val statementsFromRepo = repositoryConnection.getStatements(subject, predicate, `object`, status)
         val statementsFromStorage = storage.find(subject, predicate, `object`)
         val statementsSequence = statementsFromRepo.asSequence() + statementsFromStorage.asSequence()
-        return statementIdIteratorFromSequence(statementsSequence.filter { logger.logStatementIfInvalid(it); it.isAxiom() })
+        return statementIdIteratorFromSequence(statementsSequence) //TODO this works as intended even though I'm not filtering
     }
 
     override fun getRepStatements(
@@ -170,7 +163,7 @@ class SituationIter(
         val statementsFromRepo = repositoryConnection.getStatements(subject, predicate, `object`, context, status)
         val statementsFromStorage = storage.find(subject, predicate, `object`, context)
         val statementsSequence = statementsFromRepo.asSequence() + statementsFromStorage.asSequence()
-        return statementIdIteratorFromSequence(statementsSequence.filter { logger.logStatementIfInvalid(it); it.isAxiom() })
+        return statementIdIteratorFromSequence(statementsSequence)
     }
 
 
@@ -189,16 +182,10 @@ class SituationIter(
             }
         }
     }
+
 }
 
-fun sequenceFromStatementIdIterators(vararg iterators: StatementIdIterator): Sequence<Quad> = sequence {
-    iterators.forEach {
-        while (it.hasNext()) {
-            yield(Quad(it.subj, it.pred, it.obj, it.context, it.status))
-            it.next()
-        }
-    }
-}
+
 
 fun statementIdIteratorFromSequence(statements: Sequence<Quad>): StatementIdIterator {
     return object : StatementIdIterator() {

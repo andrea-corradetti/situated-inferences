@@ -14,7 +14,7 @@ class SituatedInferenceContext(
     val logger: Logger? = null,
 ) : RequestContext {
 
-    val situations = mutableMapOf<Long, SituationIter>()
+    val situations = mutableMapOf<Long, Situation>()
     val contextsInScope = mutableSetOf<Long>()
 
     private var request: Request? = null
