@@ -1,15 +1,14 @@
 package situatedInference
 
 import com.ontotext.trree.StatementIdIterator
-import com.ontotext.trree.StatementIdIterator.AXIOM_STATEMENT_STATUS
-import com.ontotext.trree.StatementIdIterator.SYSTEM_STATEMENT_STATUS
+import com.ontotext.trree.StatementIdIterator.*
 
 data class Quad(
     @JvmField val subject: Long,
     @JvmField val predicate: Long,
     @JvmField val `object`: Long,
     @JvmField val context: Long = 0,
-    @JvmField val status: Int = 0,
+    @JvmField val status: Int = 0, //FIXME inconsistent between StatementIterator and StatementIdIterator. Consider subclassing
 ) {
     constructor(array: LongArray) : this(
         array[0],
@@ -26,6 +25,8 @@ data class Quad(
         iterator.context,
         iterator.status
     )
+
+    fun isExplicit(): Boolean = status and EXPLICIT_STATEMENT_STATUS != 0
 
     fun isAxiom(): Boolean = status and AXIOM_STATEMENT_STATUS != 0
 
