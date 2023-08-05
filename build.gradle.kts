@@ -27,7 +27,6 @@ dependencies {
 
     implementation("com.ontotext.graphdb:graphdb-sdk:$graphdbVersion")
     implementation("com.ontotext.graphdb:graphdb-runtime:$graphdbVersion")
-    implementation(files("libs/Proof-1.0-SNAPSHOT.jar"))
 }
 
 tasks.test {
