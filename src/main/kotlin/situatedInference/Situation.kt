@@ -44,7 +44,12 @@ class Situation(
             subject, predicate, `object`, context, EXPLICIT_STATEMENT_STATUS
         ) //TODO possibly should be implicit status
         logger.debug("forward chaining added ${getPrettyStringForTriple(subject, predicate, `object`)}")
+
         storageIterator.asSequence().forEach {
+            if (inferencer.hasConsistencyRules()) {
+                logger.debug("ruleset has consistency rules")
+                checkForInconsistencies(it)
+            }
             if (inferencer.inferStatementsFlag) {
                 logger.debug(
                     """Running inference with {} {} {}
@@ -53,41 +58,80 @@ class Situation(
                     it.subject,
                     it.predicate,
                     it.`object`,
-                    getStringValue(it.subject),
-                    getStringValue(it.predicate),
-                    getStringValue(it.`object`)
+                    requestContext.getStringValue(it.subject),
+                    requestContext.getStringValue(it.predicate),
+                    requestContext.getStringValue(it.`object`)
                 )
 
-                inferencer.doInference(
-                    it.subject,
-                    it.predicate,
-                    it.`object`,
-                    if (it.isSystemStatement()) it.context else 0,
-                    0,      //infer with all rules
-                    this    //call back overridden methods in this class
-                ) // this will call back ruleFired which is overridden below
+
+                doInference(it) // this will call back ruleFired which is overridden below
             } else {
                 logger.warn("Inference is not enabled - skipping inference")
             }
+
+
         }
     }
 
-    private fun getStringValue(entityId: Long?): String {
-        return when (entityId) {
-            null -> "null"
-            0L -> "unbound"
-            else -> try {
-                requestContext.repositoryConnection.entityPoolConnection.entities[entityId].stringValue()
-            } catch (e: Exception) {
-                logger.debug(e.message)
-                "invalid id"
+
+    private fun checkForInconsistencies(it: Quad) {
+        val entityPool = repositoryConnection.entityPoolConnection
+
+        val task = object : AbstractInferencerTask {
+            override fun doInference(p0: Long, p1: Long, p2: Long, p3: Long, p4: Int, p5: AbstractInferencerTask?) {
+//                TODO("Not yet implemented")
             }
+
+            override fun ruleFired(p0: Long, p1: Long, p2: Long, p3: Long, p4: Int, p5: Int) {
+//                TODO("Not yet implemented")
+            }
+
+            override fun getRepStatements(p0: Long, p1: Long, p2: Long, p3: Int): StatementIdIterator {
+                logger.debug("it works!!!")
+                return empty
+            }
+
+            override fun getRepStatements(p0: Long, p1: Long, p2: Long, p3: Long, p4: Int): StatementIdIterator {
+                logger.debug("it works!!!")
+                return empty
+            }
+
         }
+        //FIXME this does not work
+        val _inferencer = InjectedInferencer(inferencer, task)
+        val inconsistencies = _inferencer.checkForInconsistencies(
+            entityPool,
+            it.subject,
+            it.predicate,
+            it.`object`,
+            if (it.isSystemStatement()) it.context else 0,
+            0
+        )
+        if (inconsistencies.isNotBlank()) {
+            logger.debug("inconsistencies {}", inconsistencies)
+        }
+
     }
+
+    private fun doInference(it: Quad) {
+        inferencer.doInference(
+            it.subject,
+            it.predicate,
+            it.`object`,
+            if (it.isSystemStatement()) it.context else 0,
+            0,      //infer with all rules
+            this    //call back overridden methods in this class
+        )
+    }
+
 
     private fun getPrettyStringForTriple(subject: Long, predicate: Long, `object`: Long): String = """
-        $subject $predicate $`object` : <${getStringValue(subject)} ${getStringValue(predicate)} ${
-        getStringValue(
+        $subject $predicate $`object` : <${requestContext.getStringValue(subject)} ${
+        requestContext.getStringValue(
+            predicate
+        )
+    } ${
+        requestContext.getStringValue(
             `object`
         )
     }>
@@ -101,7 +145,7 @@ class Situation(
             return
         }
         if (subject == 0L || predicate == 0L || `object` == 0L) {
-            throw PluginException("Generated incorrect statement $subject $predicate $`object`")
+            throw PluginException("Generated incorrect statement $subject $predicate $`object`. Check if you are running inferences on statements with values of 0")
         }
 
         if (statementIsAxiom(subject, predicate, `object`)) {
@@ -110,15 +154,7 @@ class Situation(
                     getPrettyStringForTriple(subject, predicate, `object`)
                 }"
             )
-        }
-//        else if (storage.contains(subject, predicate, `object`, context)) {
-//            logger.debug(
-//                "Rule fired but statement already already in storage ${
-//                    getPrettyStringForTriple(subject, predicate, `object`)
-//                }"
-//            )
-//        }
-        else {
+        } else {
             storage.add(subject, predicate, `object`, context, status)
             logger.debug(
                 "Rule fired and adding inferred statement ${getPrettyStringForTriple(subject, predicate, `object`)}"
@@ -150,19 +186,22 @@ class Situation(
 
     override fun getRepStatements(subject: Long, predicate: Long, `object`: Long, status: Int): StatementIdIterator {
         logger.debug("gettingRepStatements for ${getPrettyStringForTriple(subject, predicate, `object`)}")
-        val statementsFromRepo = repositoryConnection.getStatements(subject, predicate, `object`, status)
-        val statementsFromStorage = storage.find(subject, predicate, `object`)
-        val statementsSequence = statementsFromRepo.asSequence() + statementsFromStorage.asSequence()
-        return statementIdIteratorFromSequence(statementsSequence) //TODO this works as intended even though I'm not filtering
+        val axiomsFromRepo = repositoryConnection.getStatements(subject, predicate, `object`, status).asSequence()
+            .filter { it.isAxiom() }
+        val statementsFromStorage = storage.find(subject, predicate, `object`).asSequence()
+        val statements = axiomsFromRepo + statementsFromStorage
+        return statementIdIteratorFromSequence(statements) //TODO this works as intended even though I'm not filtering
     }
 
     override fun getRepStatements(
         subject: Long, predicate: Long, `object`: Long, context: Long, status: Int
     ): StatementIdIterator {
         logger.debug("gettingRepStatements for ${getPrettyStringForTriple(subject, predicate, `object`)}")
-        val statementsFromRepo = repositoryConnection.getStatements(subject, predicate, `object`, context, status)
-        val statementsFromStorage = storage.find(subject, predicate, `object`, context)
-        val statementsSequence = statementsFromRepo.asSequence() + statementsFromStorage.asSequence()
+        val axiomsFromRepo =
+            repositoryConnection.getStatements(subject, predicate, `object`, context, status).asSequence()
+                .filter { it.isAxiom() }
+        val statementsFromStorage = storage.find(subject, predicate, `object`, context).asSequence()
+        val statementsSequence = axiomsFromRepo + statementsFromStorage
         return statementIdIteratorFromSequence(statementsSequence)
     }
 
@@ -174,17 +213,7 @@ class Situation(
             storage.find(subjectId, predicateId, objectId, contextId)
         } ?: empty
     }
-
-    companion object {
-        fun Logger.logStatementIfInvalid(it: Quad) {
-            if (it.subject == 0L || it.predicate == 0L || it.`object` == 0L) {
-                debug("sequence from iterator returned invalid statement {}", it)
-            }
-        }
-    }
-
 }
-
 
 
 fun statementIdIteratorFromSequence(statements: Sequence<Quad>): StatementIdIterator {
@@ -213,4 +242,16 @@ fun statementIdIteratorFromSequence(statements: Sequence<Quad>): StatementIdIter
         override fun changeStatus(p0: Int) {}
     }
 
+}
+
+fun SituatedInferenceContext.getStringValue(entityId: Long?): String {
+    return when (entityId) {
+        null -> "null"
+        0L -> "unbound"
+        else -> try {
+            repositoryConnection.entityPoolConnection.entities[entityId].stringValue()
+        } catch (e: Exception) {
+            "invalid id"
+        }
+    }
 }

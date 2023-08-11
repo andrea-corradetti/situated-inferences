@@ -2,10 +2,12 @@ package situatedInference
 
 import com.ontotext.trree.AbstractRepositoryConnection
 import com.ontotext.trree.StatementIdIterator
+import com.ontotext.trree.SystemGraphs
 import com.ontotext.trree.sdk.*
 import com.ontotext.trree.sdk.Entities.Scope.REQUEST
 import org.eclipse.rdf4j.model.util.Values.bnode
 import org.eclipse.rdf4j.model.util.Values.iri
+import org.eclipse.rdf4j.model.vocabulary.RDF4J
 import kotlin.properties.Delegates
 
 
@@ -19,6 +21,8 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
     private val situateIri = iri(namespace + "situate")
     private var explainId by Delegates.notNull<Long>()
     private var situateId by Delegates.notNull<Long>()
+
+    private val defaultGraphId = SystemGraphs.RDF4J_NIL.id.toLong()
 
     override fun getName() = "Situated-Inference"
 
@@ -57,7 +61,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
     override fun estimate(
         p0: Long, p1: Long, p2: LongArray?, p3: Long, p4: PluginConnection?, p5: RequestContext?
     ): Double {
-        TODO("Not yet implemented")
+        return 1.0 //TODO("Not yet implemented")
     }
 
     //For list objects
@@ -85,7 +89,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
 
         val situationId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
 
-        val statementsInScope = objectsIds.asSequence().map { contextInScope ->
+        val statementsInScope = objectsIds.asSequence().map(::replaceDefaultGraphId).map { contextInScope ->
             pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, contextInScope).asSequence()
         }.flatten()
 
@@ -98,6 +102,10 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
         )
     }
 
+    private fun replaceDefaultGraphId(it: Long) = when (it) {
+        defaultGraphId -> SystemGraphs.EXPLICIT_GRAPH.id.toLong()
+        else -> it
+    }
 
     private fun getAntecedentsWithRule(
         quad: Quad, pluginConnection: PluginConnection, requestContext: SituatedInferenceContext
