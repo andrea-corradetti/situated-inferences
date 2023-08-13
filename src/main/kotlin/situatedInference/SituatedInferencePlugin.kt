@@ -7,7 +7,6 @@ import com.ontotext.trree.sdk.*
 import com.ontotext.trree.sdk.Entities.Scope.REQUEST
 import org.eclipse.rdf4j.model.util.Values.bnode
 import org.eclipse.rdf4j.model.util.Values.iri
-import org.eclipse.rdf4j.model.vocabulary.RDF4J
 import kotlin.properties.Delegates
 
 
@@ -18,9 +17,11 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
 
     private val namespace = "https://w3id.org/conjectures/"
     private val explainIri = iri(namespace + "explain")
-    private val situateIri = iri(namespace + "situate")
     private var explainId by Delegates.notNull<Long>()
+    private val situateIri = iri(namespace + "situate")
     private var situateId by Delegates.notNull<Long>()
+    private val sharedIri = iri(namespace + "shared")
+    private var sharedId by Delegates.notNull<Long>()
 
     private val defaultGraphId = SystemGraphs.RDF4J_NIL.id.toLong()
 
@@ -29,10 +30,12 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
     override fun initialize(reason: InitReason, pluginConnection: PluginConnection) {
         explainId = pluginConnection.entities.put(explainIri, Entities.Scope.SYSTEM)
         situateId = pluginConnection.entities.put(situateIri, Entities.Scope.SYSTEM)
+        sharedId = pluginConnection.entities.put(sharedIri, Entities.Scope.SYSTEM)
         logger.debug("Initialized: explainId $explainId, situateId $situateId")
     }
 
-    override fun preprocess(request: Request): RequestContext = SituatedInferenceContext.fromRequest(request, logger)
+    override fun preprocess(request: Request): RequestContext =
+        SituatedInferenceContext.fromRequest(request, logger).apply { sharedScope = sharedId }
 
     override fun estimate(p0: Long, p1: Long, p2: Long, p3: Long, p4: PluginConnection?, p5: RequestContext?): Double {
         return 1.0 //TODO
@@ -89,9 +92,11 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
 
         val situationId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
 
-        val statementsInScope = objectsIds.asSequence().map(::replaceDefaultGraphId).map { contextInScope ->
-            pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, contextInScope).asSequence()
-        }.flatten()
+        val statementsInScope =
+            (objectsIds + sharedId).asSequence().map(::replaceDefaultGraphId).map { contextInScope ->
+                requestContext.situations[contextInScope]?.getAll()?.asSequence()
+                    ?: pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, contextInScope).asSequence()
+            }.flatten()
 
         requestContext.situations[situationId] = Situation(
             requestContext, situationId, situateId, objectsIds.toSet(), statementsInScope

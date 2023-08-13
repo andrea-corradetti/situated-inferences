@@ -99,26 +99,13 @@ class TestProofWithOwl2RL {
             }
         }
 
-        println(result1)
-        println(result2)
-        println(result3)
-        val symmetricDifference = result1 + result2 - (result1 intersect result2)
         assert(result1 == result2) {
-            println(
-                """
-                result1 and result2 are different
-                result1 = $result1
-                result2 = $result2
-                difference = $symmetricDifference
-            """.trimIndent()
-            )
+            println("result1 and result2 are different: ${result1 symmetricDifference result2} ")
         }
 
         assert(result2 == result3) {
-//            println("result 2 (${result2.size}) $result2")
-//            println("result 3 (${result3.size}) $result3")
+            println("result2 and result3 are different: ${result2 symmetricDifference result3} ")
         }
-
     }
 
 
@@ -283,6 +270,70 @@ class TestProofWithOwl2RL {
         assert(result1 == result2)
     }
 
+    @Test
+    fun `Statements in shared contexts are correctly used for inference`() {
+        val addToDifferentGraphs = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            
+            INSERT DATA {
+                <urn:childOf> owl:inverseOf <urn:hasChild> .
+                
+                graph <urn:family> {
+                    <urn:John> <urn:childOf> <urn:Mary>.
+                }
+            }
+        """.trimIndent()
+        val situateWithSharedContexts = """
+            PREFIX conj: <https://w3id.org/conjectures/>
+            
+            select distinct ?s ?p ?o where {
+                conj:shared conj:situate <http://rdf4j.org/schema/rdf4j#nil>  .
+                conj:situation conj:situate <urn:family>
+                
+                graph conj:situation {
+                    ?s ?p ?o 
+                }
+            }
+        """.trimIndent()
+
+        val addToDefaultGraph = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            
+            INSERT DATA {
+                <urn:childOf> owl:inverseOf <urn:hasChild> .
+                <urn:John> <urn:childOf> <urn:Mary> .
+            }
+        """.trimIndent()
+
+        val selectAllFromDefault = """
+            PREFIX onto: <http://www.ontotext.com/>
+            
+            select distinct * 
+            from onto:readwrite
+            where { 
+                ?s ?p ?o .
+            }
+        """.trimIndent()
+
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addToDifferentGraphs).execute()
+                it.prepareTupleQuery(situateWithSharedContexts).evaluate()
+                    .mapTo(HashSet(), BindingSet::toStringValueMap)
+            }
+        }
+
+        val result2 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addToDefaultGraph).execute()
+                it.prepareTupleQuery(selectAllFromDefault).evaluate().mapTo(HashSet(), BindingSet::toStringValueMap)
+            }
+        }
+
+        assert(result1 == result2) {
+            println("result1 and result2 are different: ${result1 symmetricDifference result2} ")
+        }
+    }
 
     companion object {
         @JvmField
@@ -349,3 +400,4 @@ inline fun <R> SailRepository.use(block: (SailRepository) -> R): R {
 internal fun BindingSet.toStringValueMap(): Map<String, String> =
     associate { it.name to it.value.stringValue() }
 
+public infix fun <T> Set<T>.symmetricDifference(other: Set<T>): Set<T> = (this - other) + (other - this)

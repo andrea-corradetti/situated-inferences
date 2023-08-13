@@ -9,7 +9,6 @@ import com.ontotext.trree.plugin.provenance.Storage
 import com.ontotext.trree.sdk.Entities.Type.LITERAL
 import com.ontotext.trree.sdk.Entities.Type.URI
 import com.ontotext.trree.sdk.PluginException
-import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
 
@@ -37,7 +36,7 @@ class Situation(
     }
 
 
-    //FIXME same triples with different contexts are duplicated in storage
+    //FIXME same triples with different contexts are duplicated in storage (this might be good for inconsistencies)
     private fun doForwardChaining(subject: Long, predicate: Long, `object`: Long, context: Long) {
         val storageIterator = storage.bottom()
         storage.add(
@@ -68,8 +67,6 @@ class Situation(
             } else {
                 logger.warn("Inference is not enabled - skipping inference")
             }
-
-
         }
     }
 
@@ -189,8 +186,10 @@ class Situation(
         val axiomsFromRepo = repositoryConnection.getStatements(subject, predicate, `object`, status).asSequence()
             .filter { it.isAxiom() }
         val statementsFromStorage = storage.find(subject, predicate, `object`).asSequence()
-        val statements = axiomsFromRepo + statementsFromStorage
-        return statementIdIteratorFromSequence(statements) //TODO this works as intended even though I'm not filtering
+        val sharedStatements =
+            repositoryConnection.getStatements(subject, predicate, `object`, requestContext.sharedScope, status)
+                .asSequence()
+        return statementIdIteratorFromSequence(axiomsFromRepo + statementsFromStorage + sharedStatements)
     }
 
     override fun getRepStatements(
@@ -201,9 +200,14 @@ class Situation(
             repositoryConnection.getStatements(subject, predicate, `object`, context, status).asSequence()
                 .filter { it.isAxiom() }
         val statementsFromStorage = storage.find(subject, predicate, `object`, context).asSequence()
-        val statementsSequence = axiomsFromRepo + statementsFromStorage
-        return statementIdIteratorFromSequence(statementsSequence)
+        val sharedStatements =
+            repositoryConnection.getStatements(subject, predicate, `object`, requestContext.sharedScope, status)
+                .asSequence()
+        return statementIdIteratorFromSequence(axiomsFromRepo + statementsFromStorage + sharedStatements)
     }
+
+
+    fun getAll(): StatementIdIterator = find(UNBOUND, UNBOUND, UNBOUND, UNBOUND)
 
 
     fun find(subjectId: Long, predicateId: Long, objectId: Long, contextId: Long? = null): StatementIdIterator {

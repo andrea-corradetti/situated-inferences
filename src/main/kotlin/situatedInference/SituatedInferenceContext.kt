@@ -7,6 +7,7 @@ import com.ontotext.trree.sdk.Request
 import com.ontotext.trree.sdk.RequestContext
 import com.ontotext.trree.sdk.SystemPluginOptions
 import org.slf4j.Logger
+import kotlin.properties.Delegates
 
 class SituatedInferenceContext(
     val inferencer: AbstractInferencer,
@@ -15,7 +16,7 @@ class SituatedInferenceContext(
 ) : RequestContext {
 
     val situations = mutableMapOf<Long, Situation>()
-    val contextsInScope = mutableSetOf<Long>()
+    var sharedScope by Delegates.notNull<Long>()
 
     private var request: Request? = null
     override fun getRequest(): Request? = request
