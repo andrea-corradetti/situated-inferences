@@ -3,10 +3,13 @@ package situatedInference
 import com.ontotext.graphdb.Config
 import com.ontotext.test.TemporaryLocalFolder
 import com.ontotext.trree.OwlimSchemaRepository
+import org.eclipse.rdf4j.query.BindingSet
 import org.eclipse.rdf4j.repository.sail.SailRepository
-import org.junit.*
+import org.junit.AfterClass
+import org.junit.BeforeClass
+import org.junit.ClassRule
+import org.junit.Test
 import java.util.*
-import kotlin.test.assertEquals
 
 
 class TestProofWithOwl2RL {
@@ -24,7 +27,7 @@ class TestProofWithOwl2RL {
         val situateNamedGraph = """
             PREFIX conj: <https://w3id.org/conjectures/>
             
-            select ?s ?p ?o where {
+            select distinct ?s ?p ?o where {
                 conj:situation conj:situate (<urn:family>) .
                 
                 graph conj:situation {
@@ -50,7 +53,7 @@ class TestProofWithOwl2RL {
                 conj:situation conj:situate ( <http://rdf4j.org/schema/rdf4j#nil> <urn:family> )  .
                 
                 graph conj:situation {
-                    ?s ?p ?o 
+                    ?s ?p ?o .
                 }
             }
         """.trimIndent()
@@ -74,24 +77,48 @@ class TestProofWithOwl2RL {
             }
         """.trimIndent()
 
-        val result1 = createCleanRepositoryWithDefaults().connection.use {
-            it.prepareUpdate(addToSameGraph).execute()
-            it.prepareTupleQuery(situateNamedGraph).evaluate().toSet()
+
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addToSameGraph).execute()
+                it.prepareTupleQuery(situateNamedGraph).evaluate().mapTo(HashSet(), BindingSet::toStringValueMap)
+            }
         }
 
-        val result2 = createCleanRepositoryWithDefaults().connection.use {
-            it.prepareUpdate(addToDifferentGraphs).execute()
-            it.prepareTupleQuery(situateBothGraphs).evaluate().toSet()
+        val result2 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addToDifferentGraphs).execute()
+                it.prepareTupleQuery(situateBothGraphs).evaluate().mapTo(HashSet(), BindingSet::toStringValueMap)
+            }
         }
 
-        val result3 = createCleanRepositoryWithDefaults().connection.use {
-            it.prepareUpdate(addToDefaultGraph).execute()
-            it.prepareTupleQuery(situateDefaultGraph).evaluate().toSet()
+        val result3 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addToDefaultGraph).execute()
+                it.prepareTupleQuery(situateDefaultGraph).evaluate().mapTo(HashSet(), BindingSet::toStringValueMap)
+            }
         }
 
-        assertEquals(result1, result2, "test")
-        assertEquals(result2, result3)
-        assertEquals(result3, result1)
+        println(result1)
+        println(result2)
+        println(result3)
+        val symmetricDifference = result1 + result2 - (result1 intersect result2)
+        assert(result1 == result2) {
+            println(
+                """
+                result1 and result2 are different
+                result1 = $result1
+                result2 = $result2
+                difference = $symmetricDifference
+            """.trimIndent()
+            )
+        }
+
+        assert(result2 == result3) {
+//            println("result 2 (${result2.size}) $result2")
+//            println("result 3 (${result3.size}) $result3")
+        }
+
     }
 
 
@@ -236,20 +263,24 @@ class TestProofWithOwl2RL {
             }
         """.trimIndent()
 
-        val result1 = createCleanRepositoryWithDefaults().connection.use {
-            it.prepareUpdate(addToDifferentGraphs).execute()
-            it.prepareTupleQuery(situateDefaultGraph).evaluate().toSet()
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addToDifferentGraphs).execute()
+                it.prepareTupleQuery(situateDefaultGraph).evaluate().mapTo(HashSet(), BindingSet::toStringValueMap)
+            }
         }
 
-        val result2 = createCleanRepositoryWithDefaults().connection.use {
-            it.prepareUpdate(addToDefaultGraph).execute()
-            it.prepareTupleQuery(selectAllFromDefault).evaluate().toSet()
+        val result2 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addToDefaultGraph).execute()
+                it.prepareTupleQuery(selectAllFromDefault).evaluate().mapTo(HashSet(), BindingSet::toStringValueMap)
+            }
         }
 
         println("List 1 $result1")
         println("List 2 $result2")
 
-        assertEquals(result1, result2, "Results are identical")
+        assert(result1 == result2)
     }
 
 
@@ -301,4 +332,20 @@ class TestProofWithOwl2RL {
         }
     }
 }
+
+//TODO add exception rethrow
+inline fun <R> SailRepository.use(block: (SailRepository) -> R): R {
+    return try {
+        block(this)
+    } finally {
+        this.shutDown()
+    }
+}
+
+/**
+ * The default equality method for [com.ontotext.trree.query.evaluation.GraphDBBindingSet] takes into account implementation details that falsify the result.
+ * Adding the same statements in a different order generates different ids for the same values.
+ */
+internal fun BindingSet.toStringValueMap(): Map<String, String> =
+    associate { it.name to it.value.stringValue() }
 
