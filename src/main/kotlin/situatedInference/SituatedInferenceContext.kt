@@ -15,8 +15,15 @@ class SituatedInferenceContext(
     val logger: Logger? = null,
 ) : RequestContext {
 
-    val situations = mutableMapOf<Long, Situation>()
     var sharedScope by Delegates.notNull<Long>()
+
+    val situations = mutableMapOf<Long, Situation>()
+    val explainTasks = mutableMapOf<Long, ExplainIter>()
+
+
+    val isInferenceEnabled
+        get() = inferencer.inferStatementsFlag
+
 
     private var request: Request? = null
     override fun getRequest(): Request? = request
