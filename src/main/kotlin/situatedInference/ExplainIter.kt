@@ -3,16 +3,17 @@ package situatedInference
 import com.ontotext.trree.*
 import com.ontotext.trree.query.QueryResultIterator
 import com.ontotext.trree.query.StatementSource
-import com.ontotext.trree.sdk.StatementIterator
 import org.slf4j.Logger
+import kotlin.properties.Delegates
+
 
 class ExplainIter(
     requestContext: SituatedInferenceContext, //id of bnode representing the explain operation
-    reificationId: Long,
-    explainId: Long,
+    val reificationId: Long,
+    val explainId: Long,
     private val statementToExplain: Quad,
     explicitStatementProps: ExplicitStatementProps
-) : StatementIterator(), ReportSupportedSolution {
+) : ReportSupportedSolution {
 
     private val contextResolver: ContextResolver = ContextResolver(requestContext.repositoryConnection)
     private val logger: Logger? = requestContext.logger
@@ -24,15 +25,9 @@ class ExplainIter(
     private var isDerivedFromSameAs: Boolean = explicitStatementProps.isDerivedFromSameAs
     private var explicitContext: Long = explicitStatementProps.explicitContext //FIXME possibly misguiding name
 
-    var solutions = mutableSetOf<Solution?>()
-    private var iter: Iterator<Solution?>? = null
-    private var currentSolution: Solution? = null
-    private var currentPremiseNo = -1
-    private var values: Quad? = null
+    var solutions = mutableSetOf<Solution>()
 
     init {
-        subject = reificationId
-        predicate = explainId
         init()
     }
 
@@ -47,18 +42,11 @@ class ExplainIter(
                 explicitContext,
                 0
             )
-            currentSolution = Solution("explicit", listOf(antecedent))
-            currentPremiseNo = 0
-            iter = emptySolutionIterator()
+            solutions.add(Solution("explicit", listOf(antecedent)))
         } else {
             inferencer.isSupported(
                 statementToExplain.subject, statementToExplain.predicate, statementToExplain.`object`, 0, 0, this
-            ) //this method has a side effect that prompts the overridden report() method to populate our solution with antecedents. The strange this reference does exactly that. Sorry, I don't make the rules. No idea what the fourth parameter does. Good luck
-            iter = solutions.iterator()
-            currentSolution = iter.let { if (it?.hasNext() == true) it.next() else null }
-            if (currentSolution != null) {
-                currentPremiseNo = 0
-            }
+            ) //this method callbacks overridden methods from ReportSupportedSolution on this
         }
     }
 
@@ -100,11 +88,12 @@ class ExplainIter(
         }
 
         val sharedContextsForSolution =
-            antecedentToContexts.values.reduceOrNull { acc, set -> acc.intersect(set) } ?: listOf()
+            antecedentToContexts.values.reduceOrNull { acc, set -> acc intersect set } ?: listOf()
 
         val solutionSets = sharedContextsForSolution.map { sharedContext ->
             antecedentToContexts.keys.map { Quad(it.subject, it.predicate, it.`object`, sharedContext, it.status) }
         }
+
 
         solutionSets.forEach {
             logger.debug("solutionSet for {} = {}", ruleName, it)
@@ -115,27 +104,6 @@ class ExplainIter(
 
         return false
     }
-
-
-    override fun close() {
-        currentSolution = null
-        solutions.clear()
-    }
-
-
-    override fun next(): Boolean {
-        while (currentSolution != null) {
-            if (currentPremiseNo < currentSolution!!.antecedents.size) {
-                values = currentSolution!!.antecedents[currentPremiseNo++]
-                return true
-            }
-            values = null
-            currentPremiseNo = 0
-            currentSolution = if (iter!!.hasNext()) iter!!.next() else null
-        }
-        return false
-    }
-
 
     override fun getConnection(): AbstractRepositoryConnection = repositoryConnection
 
