@@ -3,6 +3,7 @@ package situatedInference
 import com.ontotext.trree.AbstractInferencer
 import com.ontotext.trree.AbstractRepositoryConnection
 import com.ontotext.trree.sdk.PluginException
+import com.ontotext.trree.sdk.QueryRequest
 import com.ontotext.trree.sdk.Request
 import com.ontotext.trree.sdk.RequestContext
 import com.ontotext.trree.sdk.SystemPluginOptions
@@ -15,10 +16,15 @@ class SituatedInferenceContext(
     val logger: Logger? = null,
 ) : RequestContext {
 
+    var estimateHasRun: Boolean = false
     var sharedScope by Delegates.notNull<Long>()
 
     val situations = mutableMapOf<Long, Situation>()
-    val explainTasks = mutableMapOf<Long, ExplainIter>()
+
+    val situateTasks = mutableMapOf<Long, SituateTask>()
+    val explainTasks = mutableMapOf<Long, ExplainTask>()
+
+    val schemas = mutableMapOf<Long, SchemaForSituate>()
 
 
     val isInferenceEnabled
@@ -33,6 +39,9 @@ class SituatedInferenceContext(
 
     companion object {
         fun fromRequest(request: Request, logger: Logger? = null): SituatedInferenceContext {
+
+            println("dataset ${ (request as QueryRequest).dataset}")
+
             val options =
                 request.options as? SystemPluginOptions ?: throw PluginException("SystemPluginOptions are null")
             val inferencer = options.getOption(SystemPluginOptions.Option.ACCESS_INFERENCER) as? AbstractInferencer

@@ -5,39 +5,65 @@ import com.ontotext.trree.StatementIdIterator
 import com.ontotext.trree.SystemGraphs
 import com.ontotext.trree.sdk.*
 import com.ontotext.trree.sdk.Entities.Scope.REQUEST
+import com.ontotext.trree.sdk.Entities.UNBOUND
 import org.eclipse.rdf4j.model.util.Values.bnode
 import org.eclipse.rdf4j.model.util.Values.iri
-import kotlin.properties.Delegates
 
 
-const val UNBOUND = 0L
+class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
+    ListPatternInterpreter, PluginTransactionListener {
 
-class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionListener, PatternInterpreter,
-    ListPatternInterpreter {
+    //TODO move to object
 
     private val namespace = "https://w3id.org/conjectures/"
     private val explainIri = iri(namespace + "explain")
-    private var explainId by Delegates.notNull<Long>()
     private val situateIri = iri(namespace + "situate")
-    private var situateId by Delegates.notNull<Long>()
     private val sharedIri = iri(namespace + "shared")
-    private var sharedId by Delegates.notNull<Long>()
+    private val situateInsideIri = iri(namespace + "situateInside")
+    private val situatedContextPrefixIri = iri(namespace + "SituatedContextPrefix")
+    private val sharedKnowledgeContextIri = iri(namespace + "SharedKnowledgeContext")
+    private val situatedContextIri = iri(namespace + "SituatedContext")
+    private val situateSchemaIri = iri(namespace + "situateSchema")
+    private val appendToContextsIri = iri(namespace + "appendToContexts")
+    private val hasSituatedContextIri = iri(namespace + "hasSituatedContext")
+
 
     private val defaultGraphId = SystemGraphs.RDF4J_NIL.id.toLong()
 
+
     override fun getName() = "Situated-Inference"
 
+    //FIXME this is getting hard to work with
     override fun initialize(reason: InitReason, pluginConnection: PluginConnection) {
         explainId = pluginConnection.entities.put(explainIri, Entities.Scope.SYSTEM)
         situateId = pluginConnection.entities.put(situateIri, Entities.Scope.SYSTEM)
         sharedId = pluginConnection.entities.put(sharedIri, Entities.Scope.SYSTEM)
+        situateInsideId = pluginConnection.entities.put(situateInsideIri, Entities.Scope.SYSTEM)
+        situatedContextPrefixId = pluginConnection.entities.put(situatedContextPrefixIri, Entities.Scope.SYSTEM)
+        sharedKnowledgeContextId = pluginConnection.entities.put(sharedKnowledgeContextIri, Entities.Scope.SYSTEM)
+        situatedContextId = pluginConnection.entities.put(situatedContextIri, Entities.Scope.SYSTEM)
+        situateSchemaId = pluginConnection.entities.put(situateSchemaIri, Entities.Scope.SYSTEM)
+        appendToContextsId = pluginConnection.entities.put(appendToContextsIri, Entities.Scope.SYSTEM)
+        hasSituatedContextId = pluginConnection.entities.put(hasSituatedContextIri, Entities.Scope.SYSTEM)
         logger.debug("Initialized: explainId $explainId, situateId $situateId")
     }
+
 
     override fun preprocess(request: Request): RequestContext =
         SituatedInferenceContext.fromRequest(request, logger).apply { sharedScope = sharedId }
 
-    override fun estimate(p0: Long, p1: Long, p2: Long, p3: Long, p4: PluginConnection?, p5: RequestContext?): Double {
+    override fun estimate(
+        p0: Long,
+        p1: Long,
+        p2: Long,
+        p3: Long,
+        p4: PluginConnection?,
+        requestContext: RequestContext?
+    ): Double {
+        if (requestContext !is SituatedInferenceContext) {
+            return Double.MAX_VALUE
+        }
+        requestContext.estimateHasRun = true
         return 1.0 //TODO
     }
 
@@ -57,14 +83,98 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
             return interpret(subjectId, predicateId, longArrayOf(objectId), contextId, pluginConnection, requestContext)
         }
 
-        val situation = requestContext.situations[contextId] ?: return null
-        return situation.find(subjectId, predicateId, objectId).toStatementIterator()
+        if (predicateId == situateSchemaId) {
+            val taskId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
+            requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
+                .apply { schemaId = objectId }
+            return StatementIterator.create(taskId, predicateId, objectId, contextId)
+        }
+
+        if (predicateId == appendToContextsId) {
+            val taskId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
+            requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
+                .apply { suffixForNewNames = pluginConnection.entities[objectId].stringValue() }
+            return StatementIterator.create(taskId, predicateId, objectId, contextId)
+        }
+
+        if (predicateId == hasSituatedContextId) {
+            val taskId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
+            val task = requestContext.situateTasks[taskId] ?: return StatementIterator.create(
+                taskId,
+                predicateId,
+                objectId,
+                contextId
+            )
+            return StatementIterator.create(task.situationIds.map {
+                longArrayOf(
+                    taskId,
+                    hasSituatedContextId,
+                    it,
+                    contextId
+                )
+            }
+                .toTypedArray())
+        }
+
+        if (pluginConnection.entities[contextId]?.stringValue()?.startsWith(namespace + "schemas") == true) {
+            return handleSchemaStatement(subjectId, predicateId, objectId, contextId, requestContext)
+        }
+
+        requestContext.situateTasks.values.forEach { it.updateSituations() } //TODO rewrite so this is unnecessary
+
+//        logger.debug("context for find {}", pluginConnection.entities[contextId]?.stringValue() ?: "null")
+//        requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)?.asSequence()?.forEach {
+//            logger.debug("QUAD {}", it)
+//        } ?: logger.debug("returned null")
+
+        if (requestContext.situations.keys.contains(contextId)) {
+            logger.debug(
+                "sequence count {}",
+                requestContext.situations[contextId]!!.find(subjectId, predicateId, objectId).asSequence()
+                    .onEach { logger.debug("QUAD {}", it) }.count()
+            )
+        }
+
+
+
+        return requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)?.toStatementIterator()
+            ?: requestContext.situateTasks[contextId]?.findInBoundSituations(subjectId, predicateId, objectId)
+                ?.toStatementIterator()
+            ?: if ((requestContext.request as QueryRequest).dataset != null) null else StatementIterator.TRUE()
+
+
     }
 
+    private fun handleSchemaStatement(
+        subjectId: Long,
+        predicateId: Long,
+        objectId: Long,
+        contextId: Long,
+        requestContext: SituatedInferenceContext
+    ): StatementIterator? {
+        val schema = requestContext.schemas.getOrPut(contextId) { SchemaForSituate(requestContext) }
+        val parsed = schema.parse(subjectId, predicateId, objectId)
+        return if (parsed) StatementIterator.create(subjectId, predicateId, objectId, contextId) else null
+    }
+
+    private fun situateInside(
+        subjectId: Long,
+        objectId: Long,
+        pluginConnection: PluginConnection,
+        requestContext: SituatedInferenceContext
+    ): StatementIterator? {
+        TODO()
+    }
+
+
     override fun estimate(
-        p0: Long, p1: Long, p2: LongArray?, p3: Long, p4: PluginConnection?, p5: RequestContext?
+        p0: Long, p1: Long, p2: LongArray?, p3: Long, p4: PluginConnection?, requestContext: RequestContext?
     ): Double {
-        return 1.0 //TODO("Not yet implemented")
+        if (requestContext !is SituatedInferenceContext) {
+            return Double.MAX_VALUE
+        }
+        requestContext.estimateHasRun = true
+        return 1.0
     }
 
     //For list objects
@@ -76,13 +186,49 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
         pluginConnection: PluginConnection,
         requestContext: RequestContext?
     ): StatementIterator? {
-        if (requestContext !is SituatedInferenceContext || predicateId != situateId) { //TODO remove this guard
-            return null
-        }
-        if (objectsIds == null || objectsIds.isEmpty()) {
+        if (requestContext !is SituatedInferenceContext || objectsIds == null || objectsIds.isEmpty()) {
             return null
         }
 
+        return when (predicateId) {
+            situateId -> handleSituate(subjectId, objectsIds, pluginConnection, requestContext)
+            explainId -> handleExplain(subjectId, objectsIds, contextId, pluginConnection, requestContext)
+
+            else -> null
+        }
+    }
+
+
+    private fun handleExplain(
+        subjectId: Long,
+        objectsIds: LongArray,
+        contextId: Long,
+        pluginConnection: PluginConnection,
+        requestContext: SituatedInferenceContext
+    ): StatementIterator? {
+        if (!requestContext.isInferenceEnabled) {
+            logger.info("Inferencer is not enabled - skipping antecedents search")
+            return null
+        }
+        if (objectsIds.size < 3 || objectsIds.slice(0..2).any { it == UNBOUND }) {
+            return null
+        }
+
+        val (subjectToExplain, predicateToExplain, objectToExplain) = objectsIds
+
+        val explainTaskId = if (subjectId != UNBOUND) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
+
+        requestContext.explainTasks[explainTaskId];
+
+        return StatementIterator.EMPTY //TODO finish this
+    }
+
+    private fun handleSituate(
+        subjectId: Long,
+        objectsIds: LongArray,
+        pluginConnection: PluginConnection,
+        requestContext: SituatedInferenceContext
+    ): StatementIterator? {
         objectsIds.map { pluginConnection.entities[it] }.filter { !it.isBNode && !it.isIRI }.let { values ->
             if (values.isNotEmpty()) {
                 val message = values.joinToString("\n") { "${it.stringValue()} in object list isn't a valid graph." }
@@ -92,33 +238,23 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
 
         val situationId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
 
-        val statementsInScope =
-            (objectsIds + sharedId).asSequence().map(::replaceDefaultGraphId).map { contextInScope ->
-                requestContext.situations[contextInScope]?.getAll()?.asSequence()
-                    ?: pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, contextInScope).asSequence()
-            }.flatten()
-
         requestContext.situations[situationId] = Situation(
-            requestContext, situationId, situateId, objectsIds.toSet(), statementsInScope
-        ).apply { inferImplicitStatements() }
+            requestContext, situationId, objectsIds.toSet() + sharedId
+        )
 
         return StatementIterator.create(
             objectsIds.map { longArrayOf(situationId, situateId, it, 0L) }.toTypedArray()
         )
     }
 
-    private fun replaceDefaultGraphId(it: Long) = when (it) {
-        defaultGraphId -> SystemGraphs.EXPLICIT_GRAPH.id.toLong()
-        else -> it
-    }
 
-    private fun getAntecedentsWithRule(
-        quad: Quad, pluginConnection: PluginConnection, requestContext: SituatedInferenceContext
-    ): MutableSet<Solution?> {
-        val reificationId = pluginConnection.entities.put(bnode(), REQUEST)
-        val statementProps = requestContext.repositoryConnection.getExplicitStatementProps(quad.asTriple())
-        return ExplainIter(requestContext, reificationId, 0, quad, statementProps).solutions
-    }
+//    private fun getAntecedentsWithRule(
+//        quad: Quad, pluginConnection: PluginConnection, requestContext: SituatedInferenceContext
+//    ): MutableSet<Solution?> {
+//        val reificationId = pluginConnection.entities.put(bnode(), REQUEST)
+//        val statementProps = requestContext.repositoryConnection.getExplicitStatementProps(quad.asTriple())
+//        return ExplainIter(requestContext, reificationId, 0, quad, statementProps).solutions
+//    }
 
 
     private fun AbstractRepositoryConnection.getExplicitStatementProps(
@@ -144,16 +280,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
     }
 
 
-    override fun transactionStarted(p0: PluginConnection?) {}
-
-    override fun transactionCommit(p0: PluginConnection?) {}
-
-    override fun transactionCompleted(p0: PluginConnection?) {
-    }
-
-    override fun transactionAborted(p0: PluginConnection?) {
-    }
-
     private fun Long.isBound(): Boolean = this != 0L
 
     private fun StatementIdIterator.toStatementIterator(): StatementIterator {
@@ -177,6 +303,27 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PluginTransactionLis
         }
 
     }
+
+    override fun transactionStarted(p0: PluginConnection?) {
+        logger.debug("transaction started")
+    }
+
+    override fun transactionCommit(p0: PluginConnection) {
+        logger.debug("transaction commit")
+
+//        val testId = p0.entities.put(iri("http://www.test.com"), DEFAULT)
+//        logger.debug("testId $testId")
+    }
+
+    override fun transactionCompleted(p0: PluginConnection?) {
+        logger.debug("transaction completed")
+
+    }
+
+    override fun transactionAborted(p0: PluginConnection?) {
+        logger.debug("transaction aborted")
+
+    }
 }
 
 fun StatementIterator.asSequence() = sequence {
@@ -194,3 +341,28 @@ fun StatementIdIterator.asSequence() = sequence {
     }
     this@asSequence.close()
 }.constrainOnce()
+
+fun statementIteratorFromSequence(sequence: Sequence<Quad>) = object : StatementIterator() {
+    val iterator = sequence.iterator()
+
+
+    override fun next(): Boolean {
+        if (iterator.hasNext()) {
+            val current = iterator.next()
+            this.subject = current.subject
+            this.predicate = current.predicate
+            this.`object` = current.`object`
+            this.context = current.context
+            return true
+        }
+        return false
+    }
+
+    override fun close() {}
+
+}
+
+fun replaceDefaultGraphId(it: Long) = when (it) {
+    SystemGraphs.RDF4J_NIL.id.toLong() -> SystemGraphs.EXPLICIT_GRAPH.id.toLong() //TODO consider whether readwrite would be more accurate
+    else -> it
+}

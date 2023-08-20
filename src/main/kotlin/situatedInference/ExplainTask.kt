@@ -4,10 +4,9 @@ import com.ontotext.trree.*
 import com.ontotext.trree.query.QueryResultIterator
 import com.ontotext.trree.query.StatementSource
 import org.slf4j.Logger
-import kotlin.properties.Delegates
 
 
-class ExplainIter(
+class ExplainTask(
     requestContext: SituatedInferenceContext, //id of bnode representing the explain operation
     val reificationId: Long,
     val explainId: Long,

@@ -2,6 +2,7 @@ package situatedInference
 
 import com.ontotext.trree.AbstractRepositoryConnection
 import com.ontotext.trree.StatementIdIterator.*
+import com.ontotext.trree.sdk.Entities.UNBOUND
 import org.slf4j.LoggerFactory
 
 const val excludeDeletedHiddenInferred =

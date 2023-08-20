@@ -1,10 +1,6 @@
 package situatedInference
 
-internal val deleteAll = """
-        DELETE {?s ?p ?o} where {
-                ?s ?p ?o .
-        }
-    """.trimIndent()
+
 
 internal val deleteLessie = """
     PREFIX : <http://www.example.com/>

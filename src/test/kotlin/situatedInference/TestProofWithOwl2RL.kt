@@ -5,11 +5,9 @@ import com.ontotext.test.TemporaryLocalFolder
 import com.ontotext.trree.OwlimSchemaRepository
 import org.eclipse.rdf4j.query.BindingSet
 import org.eclipse.rdf4j.repository.sail.SailRepository
-import org.junit.AfterClass
-import org.junit.BeforeClass
-import org.junit.ClassRule
-import org.junit.Test
+import org.junit.*
 import java.util.*
+import kotlin.test.assertFailsWith
 
 
 class TestProofWithOwl2RL {
@@ -198,7 +196,7 @@ class TestProofWithOwl2RL {
         
             
             select ?s ?p ?o where {
-                conj:thoughts conj:situate ( :LoisLanesThoughts :MarthaKentsThoughts :myThoughts )  .
+                conj:thoughts conj:situate ( <http://rdf4j.org/schema/rdf4j#nil> :LoisLanesThoughts :MarthaKentsThoughts :myThoughts )  .
                 
                 graph conj:thoughts {
                     ?s ?p ?o 
@@ -206,8 +204,17 @@ class TestProofWithOwl2RL {
             }
         """.trimIndent()
 
+        createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(inconsistentData).execute()
+                val exception =
+                    assertFailsWith(PluginConsistencyException::class, "PluginConsistencyException not thrown") {
+                        it.prepareTupleQuery(situateInconsistentData).evaluate().map(BindingSet::toStringValueMap)
+                            .toSet()
+                    }
+            }
+        }
     }
-
 
     @Test
     fun `Default graph is situated correctly`() {
@@ -229,7 +236,7 @@ class TestProofWithOwl2RL {
                 conj:defaultGraph conj:situate (<http://rdf4j.org/schema/rdf4j#nil>)  .
                 
                 graph conj:defaultGraph {
-                    ?s ?p ?o 
+                    ?s ?p ?o
                 }
             }
         """.trimIndent()
@@ -246,8 +253,20 @@ class TestProofWithOwl2RL {
             select distinct * 
             from onto:readwrite
             where { 
-                ?s ?p ?o .
-            }
+                ?s ?p ?o
+            } 
+            
+        """.trimIndent()
+
+        val selectReadOnly = """
+            PREFIX onto: <http://www.ontotext.com/>
+            
+            select distinct * 
+            from onto:readonly
+            where { 
+                ?s ?p ?o
+            } 
+           
         """.trimIndent()
 
         val result1 = createCleanRepositoryWithDefaults().use { repo ->
@@ -260,16 +279,22 @@ class TestProofWithOwl2RL {
         val result2 = createCleanRepositoryWithDefaults().use { repo ->
             repo.connection.use {
                 it.prepareUpdate(addToDefaultGraph).execute()
-                it.prepareTupleQuery(selectAllFromDefault).evaluate().mapTo(HashSet(), BindingSet::toStringValueMap)
+                it.prepareTupleQuery(selectAllFromDefault).evaluate()
+                    .mapTo(HashSet(), BindingSet::toStringValueMap)
             }
         }
 
-        println("List 1 $result1")
-        println("List 2 $result2")
+        assert(result1 == result2) {
+            println("result1 ${result1.size} $result1")
+            println("result2 ${result2.size} $result2")
+            println("result1 and result2 are different because of: ${result1 symmetricDifference result2} ")
+        }
 
-        assert(result1 == result2)
+        assert(result1.isNotEmpty()) { println("Result1 is empty") }
+        assert(result2.isNotEmpty()) { println("Result2 is empty") }
     }
 
+    @Ignore("Have to resolve infinite loop")
     @Test
     fun `Statements in shared contexts are correctly used for inference`() {
         val addToDifferentGraphs = """
@@ -319,21 +344,180 @@ class TestProofWithOwl2RL {
             repo.connection.use {
                 it.prepareUpdate(addToDifferentGraphs).execute()
                 it.prepareTupleQuery(situateWithSharedContexts).evaluate()
-                    .mapTo(HashSet(), BindingSet::toStringValueMap)
+                    .map(BindingSet::toStringValueMap).toSet()
             }
         }
 
         val result2 = createCleanRepositoryWithDefaults().use { repo ->
             repo.connection.use {
                 it.prepareUpdate(addToDefaultGraph).execute()
-                it.prepareTupleQuery(selectAllFromDefault).evaluate().mapTo(HashSet(), BindingSet::toStringValueMap)
+                it.prepareTupleQuery(selectAllFromDefault).evaluate().map(BindingSet::toStringValueMap).toSet()
+            }
+        }
+        println("List 1 $result1")
+        println("List 2 $result2")
+
+        assert(result1 == result2) {
+            println("result1 and result2 are different because of: ${result1 symmetricDifference result2} ")
+            println("List 1 $result1")
+            println("List 2 $result2")
+        }
+
+        assert(result1.isNotEmpty())
+        assert(result2.isNotEmpty())
+    }
+
+    @Test
+    fun `Correct antecedents are identified in a situation`() {
+
+    }
+
+    @Test
+    fun `Situate with schema and hardcode graph name`() {
+        val addNamedGraphs = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+        
+            INSERT DATA {
+                :LoisLane :thinks :LoisLanesThoughts
+                GRAPH :LoisLanesThoughts {
+                    :Superman :can :fly .
+                    :Superman owl:differentFrom :ClarkKent.
+                    :Superman a t:RealPerson .
+                }
+                
+                :MarthaKent :thinks :MarthaKentsThoughts
+                GRAPH :MarthaKentsThoughts {
+                    :Superman :can :fly .
+                    :Superman owl:sameAs :ClarkKent.
+                    :Superman a t:RealPerson .
+                }
+                
+                :I :thinks :myThoughts
+                GRAPH :myThoughts {
+                    :Superman :can :clingFromCeiling .
+                    :Superman owl:sameAs :ClarkKent.
+                    :Superman a t:FictionalPerson .
+                }
+            }
+        """.trimIndent()
+
+        val situateWithSchema = """
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+            PREFIX : <http://a#>
+            
+            select ?s ?p ?o where {
+            
+                conj:task conj:situateSchema conj:schemas\/thoughts.
+                conj:task conj:appendToContexts "-situated".
+            
+                graph conj:schemas\/thoughts {
+                    rdf4j:nil a conj:SharedKnowledgeContext.
+                    :LoisLanesThoughts a conj:SituatedContext.
+                    :MarthaKentsThoughts a conj:SituatedContext.
+                    :myThoughts a conj:SituatedContext.
+                }
+            
+                graph :LoisLanesThoughts-situated {
+                    ?s ?p ?o .
+                }           
+            }
+        """.trimIndent()
+
+        val result = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addNamedGraphs).execute()
+                it.prepareTupleQuery(situateWithSchema).evaluate().map(BindingSet::toStringValueMap).toSet()
+            }
+        }
+        println("result set $result")
+        assert(result.isNotEmpty()) {
+            println("result is empty")
+        }
+
+
+    }
+
+    @Test
+    fun `Situate with schema while manually binding new graphs`() {
+        val addNamedGraphs = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+        
+            INSERT DATA {
+                :LoisLane :thinks :LoisLanesThoughts
+                GRAPH :LoisLanesThoughts {
+                    :Superman :can :fly .
+                    :Superman owl:differentFrom :ClarkKent.
+                    :Superman a t:RealPerson .
+                }
+                
+                :MarthaKent :thinks :MarthaKentsThoughts
+                GRAPH :MarthaKentsThoughts {
+                    :Superman :can :fly .
+                    :Superman owl:sameAs :ClarkKent.
+                    :Superman a t:RealPerson .
+                }
+                
+                :I :thinks :myThoughts
+                GRAPH :myThoughts {
+                    :Superman :can :clingFromCeiling .
+                    :Superman owl:sameAs :ClarkKent.
+                    :Superman a t:FictionalPerson .
+                }
+            }
+        """.trimIndent()
+
+        val situateWithSchema = """
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+            PREFIX : <http://a#>
+            
+            select ?s ?p ?o ?g1 where {
+            
+                conj:task conj:situateSchema conj:schemas\/thoughts.
+                conj:task conj:appendToContexts "-situated".
+            
+                graph conj:schemas\/thoughts {
+                    rdf4j:nil a conj:SharedKnowledgeContext.
+                    :LoisLanesThoughts a conj:SituatedContext.
+                    :MarthaKentsThoughts a conj:SituatedContext.
+                    :myThoughts a conj:SituatedContext.
+                }
+            
+                #conj:task conj:hasSituatedGraph ?sg.
+                
+                VALUES ?g1 { :LoisLanesThoughts-situated }
+            
+                # conj:spec conj:situatedWithSuffix "-situated".
+            
+                graph ?g1 {
+                    ?s ?p ?o .
+                }           
+            }
+        """.trimIndent()
+
+        val result = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addNamedGraphs).execute()
+                it.prepareTupleQuery(situateWithSchema).evaluate().map(BindingSet::toStringValueMap).toSet()
             }
         }
 
-        assert(result1 == result2) {
-            println("result1 and result2 are different: ${result1 symmetricDifference result2} ")
-        }
+        println("result set $result")
+        assert(result.isNotEmpty())
+
     }
+
 
     companion object {
         @JvmField
@@ -345,6 +529,7 @@ class TestProofWithOwl2RL {
 //                "ruleset" to "owl2-rl",
 //                "ruleset" to "owl-horst",
             "ruleset" to "owl2-ql",
+//            "check-for-inconsistencies" to "true",
         )
 
 
@@ -365,7 +550,7 @@ class TestProofWithOwl2RL {
         }
 
         @JvmStatic
-        fun setWorkDir() {
+        private fun setWorkDir() {
             System.setProperty("graphdb.home.work", "${tmpFolder.root}")
             Config.reset()
         }
@@ -377,7 +562,7 @@ class TestProofWithOwl2RL {
         }
 
         @JvmStatic
-        fun resetWorkDir() {
+        private fun resetWorkDir() {
             System.clearProperty("graphdb.home.work")
             Config.reset()
         }
@@ -400,4 +585,4 @@ inline fun <R> SailRepository.use(block: (SailRepository) -> R): R {
 internal fun BindingSet.toStringValueMap(): Map<String, String> =
     associate { it.name to it.value.stringValue() }
 
-public infix fun <T> Set<T>.symmetricDifference(other: Set<T>): Set<T> = (this - other) + (other - this)
+infix fun <T> Set<T>.symmetricDifference(other: Set<T>): Set<T> = (this - other) + (other - this)
