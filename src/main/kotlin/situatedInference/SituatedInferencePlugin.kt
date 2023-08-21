@@ -105,7 +105,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
                 objectId,
                 contextId
             )
-            return StatementIterator.create(task.situationIds.map {
+            return StatementIterator.create(task.apply { updateSituations() }.situationIds.map { //TODO move the update out of here
                 longArrayOf(
                     taskId,
                     hasSituatedContextId,
@@ -140,7 +140,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         return requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)?.toStatementIterator()
             ?: requestContext.situateTasks[contextId]?.findInBoundSituations(subjectId, predicateId, objectId)
                 ?.toStatementIterator()
-            ?: if ((requestContext.request as QueryRequest).dataset != null) null else StatementIterator.TRUE()
+            ?: if ((requestContext.request as QueryRequest).dataset != null) null else StatementIterator.TRUE() //TODO check dataset.
 
 
     }
@@ -238,8 +238,10 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         val situationId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
 
+        val sharedSituation = requestContext.situations[sharedId]
+
         requestContext.situations[situationId] = Situation(
-            requestContext, situationId, objectsIds.toSet() + sharedId
+            requestContext, situationId, objectsIds.toSet()
         )
 
         return StatementIterator.create(
