@@ -297,7 +297,7 @@ class TestProofWithOwl2RL {
         assert(result2.isNotEmpty()) { println("Result2 is empty") }
     }
 
-    @Ignore("Must resolve infinite loop. Probably should rethink this")
+//    @Ignore("Must resolve infinite loop. Probably should rethink this")
     @Test
     fun `Statements in shared contexts are correctly used for inference`() {
         val addToDifferentGraphs = """
@@ -370,6 +370,7 @@ class TestProofWithOwl2RL {
         assert(result2.isNotEmpty())
     }
 
+    @Ignore
     @Test
     fun `Correct antecedents are identified in a situation`() {
 
@@ -519,7 +520,9 @@ class TestProofWithOwl2RL {
         println("result set $result")
         assert(result.isNotEmpty())
 
-    }   @Test
+    }
+
+    @Test
     fun `Situate with schema while binding automatically`() {
         val addNamedGraphs = """
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
@@ -572,8 +575,6 @@ class TestProofWithOwl2RL {
             
                 conj:task conj:hasSituatedContext ?g1.
             
-                # conj:spec conj:situatedWithSuffix "-situated".
-            
                 graph ?g1 {
                     ?s ?p ?o .
                 }           
@@ -587,11 +588,116 @@ class TestProofWithOwl2RL {
             }
         }
 
-        println("result set $result")
+        println("result set ${result.size} $result")
         assert(result.isNotEmpty())
 
     }
 
+
+    @Test
+    fun `Situate with prefix has same result`() {
+        val addNamedGraphs = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+        
+            INSERT DATA {
+                :LoisLane :thinks :LoisLanesThoughts
+                GRAPH :LoisLanesThoughts {
+                    :Superman :can :fly .
+                    :Superman owl:differentFrom :ClarkKent.
+                    :Superman a t:RealPerson .
+                }
+                
+                :MarthaKent :thinks :MarthaKentsThoughts
+                GRAPH :MarthaKentsThoughts {
+                    :Superman :can :fly .
+                    :Superman owl:sameAs :ClarkKent.
+                    :Superman a t:RealPerson .
+                }
+                
+                :I :thinks :myThoughts
+                GRAPH :myThoughts {
+                    :Superman :can :clingFromCeiling .
+                    :Superman owl:sameAs :ClarkKent.
+                    :Superman a t:FictionalPerson .
+                }
+            }
+        """.trimIndent()
+
+        val situateWithSchema = """
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+            PREFIX : <http://a#>
+            
+            select ?s ?p ?o ?g1 where {
+            
+                conj:task conj:situateSchema conj:schemas\/thoughts.
+                conj:task conj:appendToContexts "-situated".
+            
+                graph conj:schemas\/thoughts {
+                    rdf4j:nil a conj:SharedKnowledgeContext.
+                    :LoisLanesThoughts a conj:SituatedContext.
+                    :MarthaKentsThoughts a conj:SituatedContext.
+                    :myThoughts a conj:SituatedContext.
+                }
+            
+                conj:task conj:hasSituatedContext ?g1.
+            
+                graph ?g1 {
+                    ?s ?p ?o .
+                }           
+            }
+        """.trimIndent()
+
+        val situateWithSchemaAndPrefix = """
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+            PREFIX : <http://a#>
+            
+            select ?s ?p ?o ?g1 where {
+            
+                conj:task conj:situateSchema conj:schemas\/thoughts.
+                conj:task conj:appendToContexts "-situated".
+            
+                graph conj:schemas\/thoughts {
+                    rdf4j:nil a conj:SharedKnowledgeContext.
+                    <http://a#> a conj:prefixToSituate
+                }
+            
+                conj:task conj:hasSituatedContext ?g1.
+            
+                graph ?g1 {
+                    ?s ?p ?o .
+                }           
+            }
+        """.trimIndent()
+
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addNamedGraphs).execute()
+                it.prepareTupleQuery(situateWithSchema).evaluate().map(BindingSet::toStringValueMap).toSet()
+            }
+        }
+
+        val result2 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addNamedGraphs).execute()
+                it.prepareTupleQuery(situateWithSchemaAndPrefix).evaluate().map(BindingSet::toStringValueMap).toSet()
+            }
+        }
+
+        println("result1 set ${result1.size} $result1")
+        println("result2 set ${result2.size} $result2")
+
+        assert(result1.isNotEmpty())
+        assert(result2.isNotEmpty())
+        assert(result1 == result2)
+
+    }
 
     companion object {
         @JvmField

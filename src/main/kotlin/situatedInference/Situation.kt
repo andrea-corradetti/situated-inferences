@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory
 
 class Situation(
     private val requestContext: SituatedInferenceContext,
-    private val situationId: Long,
+    val id: Long,
     private val boundContexts: Set<Long>,
 ) : AbstractInferencerTask {
     private val logger = LoggerFactory.getLogger(this.javaClass)

@@ -26,6 +26,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     private val situateSchemaIri = iri(namespace + "situateSchema")
     private val appendToContextsIri = iri(namespace + "appendToContexts")
     private val hasSituatedContextIri = iri(namespace + "hasSituatedContext")
+    private val prefixToSituateIri = iri(namespace + "prefixToSituate")
 
 
     private val defaultGraphId = SystemGraphs.RDF4J_NIL.id.toLong()
@@ -45,6 +46,8 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         situateSchemaId = pluginConnection.entities.put(situateSchemaIri, Entities.Scope.SYSTEM)
         appendToContextsId = pluginConnection.entities.put(appendToContextsIri, Entities.Scope.SYSTEM)
         hasSituatedContextId = pluginConnection.entities.put(hasSituatedContextIri, Entities.Scope.SYSTEM)
+        prefixToSituateId = pluginConnection.entities.put(prefixToSituateIri, Entities.Scope.SYSTEM)
+
         logger.debug("Initialized: explainId $explainId, situateId $situateId")
     }
 
@@ -63,7 +66,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         if (requestContext !is SituatedInferenceContext) {
             return Double.MAX_VALUE
         }
-        requestContext.estimateHasRun = true
         return 1.0 //TODO
     }
 
@@ -85,42 +87,42 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         if (predicateId == situateSchemaId) {
             val taskId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
-            requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
-                .apply { schemaId = objectId }
-            return StatementIterator.create(taskId, predicateId, objectId, contextId)
+            val task = requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
+
+            val schemaId = if (objectId.isBound()) objectId else pluginConnection.entities.put(bnode(), REQUEST)
+            val schema = requestContext.schemas.getOrPut(objectId) { SchemaForSituate(requestContext) }
+
+            task.schema = schema
+            schema.boundTasks.add(task)
+
+            return StatementIterator.create(taskId, situateSchemaId, schemaId, contextId)
         }
 
         if (predicateId == appendToContextsId) {
             val taskId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
             requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
                 .apply { suffixForNewNames = pluginConnection.entities[objectId].stringValue() }
+
             return StatementIterator.create(taskId, predicateId, objectId, contextId)
         }
 
         if (predicateId == hasSituatedContextId) {
-            val taskId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
-            val task = requestContext.situateTasks[taskId] ?: return StatementIterator.create(
-                taskId,
-                predicateId,
-                objectId,
-                contextId
+            val taskId = if (subjectId.isBound()) subjectId else return StatementIterator.EMPTY
+            val task = requestContext.situateTasks[taskId] ?: return StatementIterator.EMPTY
+
+            task.createSituations()
+
+            return StatementIterator.create(
+                task.createdSituationsIds.map { longArrayOf(taskId, hasSituatedContextId, it, contextId) }
+                    .toTypedArray()
             )
-            return StatementIterator.create(task.apply { updateSituations() }.situationIds.map { //TODO move the update out of here
-                longArrayOf(
-                    taskId,
-                    hasSituatedContextId,
-                    it,
-                    contextId
-                )
-            }
-                .toTypedArray())
         }
 
         if (pluginConnection.entities[contextId]?.stringValue()?.startsWith(namespace + "schemas") == true) {
             return handleSchemaStatement(subjectId, predicateId, objectId, contextId, requestContext)
         }
 
-        requestContext.situateTasks.values.forEach { it.updateSituations() } //TODO rewrite so this is unnecessary
+        requestContext.situateTasks.values.forEach { it.createSituations() } //TODO rewrite so this is unnecessary
 
 //        logger.debug("context for find {}", pluginConnection.entities[contextId]?.stringValue() ?: "null")
 //        requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)?.asSequence()?.forEach {
@@ -135,12 +137,10 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             )
         }
 
-
-
         return requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)?.toStatementIterator()
             ?: requestContext.situateTasks[contextId]?.findInBoundSituations(subjectId, predicateId, objectId)
                 ?.toStatementIterator()
-            ?: if ((requestContext.request as QueryRequest).dataset != null) null else StatementIterator.TRUE() //TODO check dataset.
+            ?: if ((requestContext.request as QueryRequest).dataset != null) null else StatementIterator.TRUE() //TODO remove this value.
 
 
     }
@@ -157,15 +157,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         return if (parsed) StatementIterator.create(subjectId, predicateId, objectId, contextId) else null
     }
 
-    private fun situateInside(
-        subjectId: Long,
-        objectId: Long,
-        pluginConnection: PluginConnection,
-        requestContext: SituatedInferenceContext
-    ): StatementIterator? {
-        TODO()
-    }
-
 
     override fun estimate(
         p0: Long, p1: Long, p2: LongArray?, p3: Long, p4: PluginConnection?, requestContext: RequestContext?
@@ -173,7 +164,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         if (requestContext !is SituatedInferenceContext) {
             return Double.MAX_VALUE
         }
-        requestContext.estimateHasRun = true
         return 1.0
     }
 
@@ -312,9 +302,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
     override fun transactionCommit(p0: PluginConnection) {
         logger.debug("transaction commit")
-
-//        val testId = p0.entities.put(iri("http://www.test.com"), DEFAULT)
-//        logger.debug("testId $testId")
     }
 
     override fun transactionCompleted(p0: PluginConnection?) {
@@ -324,7 +311,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
     override fun transactionAborted(p0: PluginConnection?) {
         logger.debug("transaction aborted")
-
     }
 }
 
@@ -346,7 +332,6 @@ fun StatementIdIterator.asSequence() = sequence {
 
 fun statementIteratorFromSequence(sequence: Sequence<Quad>) = object : StatementIterator() {
     val iterator = sequence.iterator()
-
 
     override fun next(): Boolean {
         if (iterator.hasNext()) {

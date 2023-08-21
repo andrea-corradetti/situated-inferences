@@ -16,7 +16,6 @@ class SituatedInferenceContext(
     val logger: Logger? = null,
 ) : RequestContext {
 
-    var estimateHasRun: Boolean = false
     var sharedScope by Delegates.notNull<Long>()
 
     val situations = mutableMapOf<Long, Situation>()

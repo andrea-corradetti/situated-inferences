@@ -1,40 +1,40 @@
 package situatedInference
 
+import com.ontotext.trree.AbstractRepositoryConnection
 import com.ontotext.trree.StatementIdIterator
 import com.ontotext.trree.entitypool.PluginEntitiesAdapter
 import com.ontotext.trree.sdk.Entities
+import com.ontotext.trree.sdk.PluginException
 import org.eclipse.rdf4j.model.util.Values.iri
 import kotlin.properties.Delegates
 
 
 class SituateTask(private val requestContext: SituatedInferenceContext) {
-    //    var contextsToSituate by Delegates.observable(setOf<Long>()) { _, oldValue, newValue ->
-//        if (oldValue != newValue) {
-//            isUpdated = false
-//        }
-//    }
-//    var sharedContexts by Delegates.observable(setOf<Long>()) { _, oldValue, newValue ->
-//        if (oldValue != newValue) {
-//            isUpdated = false
-//        }
-//    }
+
     private val entities: PluginEntitiesAdapter = requestContext.repositoryConnection.entityPoolConnection.entities
 
     var schemaId by Delegates.notNull<Long>()
-    private val schema
-        get() = requestContext.schemas[schemaId]
-
-    var suffixForNewNames: String? = null
+    var schema: SchemaForSituate? = null
 
 
-    private var isUpdated = false
-    var situationIds = mutableSetOf<Long>()
+    var suffixForNewNames: String = "-situated"
 
-    fun findInBoundSituations(subjectId: Long, predicateId: Long, objectId: Long, contextId: Long? = null): StatementIdIterator {
-        if (!isUpdated) {
-            updateSituations()
+    var createdSituationsIds = mutableSetOf<Long>()
+
+    private fun situationsAreCreated(): Boolean {
+        return schema?.contextsToSituate == createdSituationsIds
+    }
+
+    fun findInBoundSituations(
+        subjectId: Long,
+        predicateId: Long,
+        objectId: Long,
+        contextId: Long? = null
+    ): StatementIdIterator {
+        if (!situationsAreCreated()) {
+            createSituations()
         }
-        val statements = situationIds.asSequence().map {
+        val statements = createdSituationsIds.asSequence().map {
             requestContext.situations[it]
                 ?.find(
                     subjectId,
@@ -49,22 +49,33 @@ class SituateTask(private val requestContext: SituatedInferenceContext) {
     }
 
 
-    fun updateSituations() {
-        schema!!.contextsToSituate.forEach { contextId ->
-            val contextName = entities.get(contextId)
-            requestContext.repositoryConnection.beginTransaction()
-            val newSituationId =
-                entities.put(iri(contextName.stringValue() + suffixForNewNames), Entities.Scope.REQUEST)
-            requestContext.repositoryConnection.commit()
-            requestContext.situations[newSituationId] =
-                Situation(
-                    requestContext,
-                    newSituationId,
-                    setOf(contextId) + schema!!.sharedContexts
-                ) //TODO can avoid assignment
-            situationIds.add(newSituationId)
+    fun createSituationOfContext(contextId: Long): Situation  {
+        val schema = this.schema ?: throw PluginException("You are trying to situate a schema that you haven't bound")
+        val name = schema.contextToNameForSituation[contextId] ?: (entities[contextId].stringValue() + suffixForNewNames)
+        val newSituationId = requestContext.repositoryConnection.transaction {
+            entities.put(iri(name), Entities.Scope.REQUEST)
         }
-        isUpdated = true
+        return Situation(requestContext, newSituationId, schema.sharedContexts + contextId)
     }
 
+    fun createSituations() {
+        (schema!!.contextsToSituate - createdSituationsIds).forEach { contextId ->
+            val situation = createSituationOfContext(contextId)
+            requestContext.situations[situation.id] = situation
+            createdSituationsIds.add(situation.id)
+        }
+    }
+}
+
+fun <R> AbstractRepositoryConnection.transaction(block: (AbstractRepositoryConnection) -> R): R {
+    try {
+        this.beginTransaction()
+        val result = block(this)
+        this.precommit()
+        this.commit()
+        return result
+    } catch (e: Exception) {
+        this.rollback()
+        throw e
+    }
 }
