@@ -16,6 +16,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     //TODO move to object
 
     private val namespace = "https://w3id.org/conjectures/"
+    private val schemasNamespace = namespace + "schemas"
     private val explainIri = iri(namespace + "explain")
     private val situateIri = iri(namespace + "situate")
     private val sharedIri = iri(namespace + "shared")
@@ -27,6 +28,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     private val appendToContextsIri = iri(namespace + "appendToContexts")
     private val hasSituatedContextIri = iri(namespace + "hasSituatedContext")
     private val prefixToSituateIri = iri(namespace + "prefixToSituate")
+    private val regexToSituateIri = iri(namespace + "regexToSituate")
 
 
     private val defaultGraphId = SystemGraphs.RDF4J_NIL.id.toLong()
@@ -47,6 +49,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         appendToContextsId = pluginConnection.entities.put(appendToContextsIri, Entities.Scope.SYSTEM)
         hasSituatedContextId = pluginConnection.entities.put(hasSituatedContextIri, Entities.Scope.SYSTEM)
         prefixToSituateId = pluginConnection.entities.put(prefixToSituateIri, Entities.Scope.SYSTEM)
+        regexToSituateId = pluginConnection.entities.put(regexToSituateIri, Entities.Scope.SYSTEM)
 
         logger.debug("Initialized: explainId $explainId, situateId $situateId")
     }
@@ -56,17 +59,37 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         SituatedInferenceContext.fromRequest(request, logger).apply { sharedScope = sharedId }
 
     override fun estimate(
-        p0: Long,
-        p1: Long,
-        p2: Long,
-        p3: Long,
-        p4: PluginConnection?,
-        requestContext: RequestContext?
+        subjectId: Long,
+        predicateId: Long,
+        objectId: Long,
+        contextId: Long,
+        pluginConnection: PluginConnection,
+        requestContext: RequestContext
     ): Double {
-        if (requestContext !is SituatedInferenceContext) {
-            return Double.MAX_VALUE
+
+        if (subjectId == UNBOUND && predicateId != situateSchemaId){
+            return 50.0
         }
-        return 1.0 //TODO
+
+        if (predicateId == situateSchemaId) {
+            return 10.0
+        }
+
+
+
+        if (predicateId == appendToContextsId) {
+            return 20.0
+        }
+
+        if (pluginConnection.entities.get(contextId)?.stringValue()?.startsWith(schemasNamespace) == true) {
+            return 20.0
+        }
+
+        if (predicateId == hasSituatedContextId) {
+            return 40.0
+        }
+
+        return Double.MAX_VALUE
     }
 
     override fun interpret(
@@ -99,27 +122,27 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         }
 
         if (predicateId == appendToContextsId) {
-            val taskId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
+            val taskId = if (subjectId.isBound()) subjectId else return StatementIterator.create(subjectId, predicateId, objectId, contextId)
             requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
                 .apply { suffixForNewNames = pluginConnection.entities[objectId].stringValue() }
 
             return StatementIterator.create(taskId, predicateId, objectId, contextId)
         }
 
+        if (pluginConnection.entities[contextId]?.stringValue()?.startsWith(namespace + "schemas") == true) {
+            return handleSchemaStatement(subjectId, predicateId, objectId, contextId, requestContext)
+        }
+
         if (predicateId == hasSituatedContextId) {
             val taskId = if (subjectId.isBound()) subjectId else return StatementIterator.EMPTY
-            val task = requestContext.situateTasks[taskId] ?: return StatementIterator.EMPTY
+            val task = requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
+
 
             task.createSituations()
 
-            return StatementIterator.create(
-                task.createdSituationsIds.map { longArrayOf(taskId, hasSituatedContextId, it, contextId) }
-                    .toTypedArray()
+            return statementIteratorFromSequence(
+                task.createdSituationsIds.asSequence().map { Quad(taskId, hasSituatedContextId, it, contextId) }
             )
-        }
-
-        if (pluginConnection.entities[contextId]?.stringValue()?.startsWith(namespace + "schemas") == true) {
-            return handleSchemaStatement(subjectId, predicateId, objectId, contextId, requestContext)
         }
 
         requestContext.situateTasks.values.forEach { it.createSituations() } //TODO rewrite so this is unnecessary
@@ -140,7 +163,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         return requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)?.toStatementIterator()
             ?: requestContext.situateTasks[contextId]?.findInBoundSituations(subjectId, predicateId, objectId)
                 ?.toStatementIterator()
-            ?: if ((requestContext.request as QueryRequest).dataset != null) null else StatementIterator.TRUE() //TODO remove this value.
+            ?: if ((requestContext.request as QueryRequest).dataset != null) null else StatementIterator.EMPTY
 
 
     }
@@ -208,7 +231,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         val explainTaskId = if (subjectId != UNBOUND) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
 
-        requestContext.explainTasks[explainTaskId];
+        requestContext.explainTasks[explainTaskId]
 
         return StatementIterator.EMPTY //TODO finish this
     }
