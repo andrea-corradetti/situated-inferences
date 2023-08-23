@@ -123,14 +123,15 @@ class Situation(
                     getPrettyStringFor(subject, predicate, `object`)
                 }"
             )
-        } else {
-            storage.add(subject, predicate, `object`, context, status)
-            logger.debug(
-                "Rule fired and adding inferred statement ${
-                    getPrettyStringFor(subject, predicate, `object`)
-                }" + " Total size ${storage.size()}"
-            )
+            return
         }
+
+        storage.add(subject, predicate, `object`, context, status)
+        logger.debug(
+            "Rule fired and adding inferred statement ${
+                getPrettyStringFor(subject, predicate, `object`)
+            }" + " Total size ${storage.size()}"
+        )
     }
 
     fun getBottomIterator(): StatementIdIterator {
@@ -139,7 +140,10 @@ class Situation(
 
     private fun statementIsAxiom(subject: Long, predicate: Long, `object`: Long): Boolean {
         repositoryConnection.getStatements(
-            subject, predicate, `object`, DELETED_STATEMENT_STATUS or SKIP_ON_BROWSE_STATEMENT_STATUS
+            subject,
+            predicate,
+            `object`,
+            DELETED_STATEMENT_STATUS or SKIP_ON_BROWSE_STATEMENT_STATUS or GENERATED_STATEMENT_STATUS
         ).use { iter ->
             return iter.asSequence().any { it.isAxiom() }
         }

@@ -137,7 +137,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             val taskId = if (subjectId.isBound()) subjectId else return StatementIterator.EMPTY
             val task = requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
 
-
             task.createSituations()
 
             return statementIteratorFromSequence(

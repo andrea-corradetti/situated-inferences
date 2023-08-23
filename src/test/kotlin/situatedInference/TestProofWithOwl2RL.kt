@@ -8,6 +8,7 @@ import org.eclipse.rdf4j.repository.sail.SailRepository
 import org.junit.*
 import java.util.*
 import kotlin.test.assertFailsWith
+import kotlin.test.fail
 
 
 class TestProofWithOwl2RL {
@@ -247,6 +248,7 @@ class TestProofWithOwl2RL {
             INSERT DATA {
                 <urn:childOf> owl:inverseOf <urn:hasChild> .
             }
+            
         """.trimIndent()
         val selectAllFromDefault = """
             PREFIX onto: <http://www.ontotext.com/>
@@ -259,16 +261,6 @@ class TestProofWithOwl2RL {
             
         """.trimIndent()
 
-        val selectReadOnly = """
-            PREFIX onto: <http://www.ontotext.com/>
-            
-            select distinct * 
-            from onto:readonly
-            where { 
-                ?s ?p ?o
-            } 
-           
-        """.trimIndent()
 
         val result1 = createCleanRepositoryWithDefaults().use { repo ->
             repo.connection.use {
@@ -289,8 +281,6 @@ class TestProofWithOwl2RL {
         println("result2 ${result2.size} $result2")
 
         assert(result1 == result2) {
-            println("result1 ${result1.size} $result1")
-            println("result2 ${result2.size} $result2")
             println("result1 and result2 are different because of: ${result1 symmetricDifference result2} ")
         }
 
@@ -388,6 +378,41 @@ class TestProofWithOwl2RL {
             PREFIX t: <http://t#>
         
             INSERT DATA {
+                #######################################
+            #                                     #
+            #           SHARED KNOWLEDGE          #
+            #                                     #
+            #######################################
+        
+                    :Superman a t:Person.
+                    :ClarkKent a t:Person.
+        
+                    :LoisLane a t:Person.
+                    :MarthaKent a t:Person.
+                    :I a t:Person.
+                           
+                    t:FictionalPerson rdfs:subClassOf t:Person.
+                    t:RealPerson rdfs:subClassOf t:Person.
+                    t:FictionalPerson owl:complementOf t:RealPerson.
+                   
+                    :fly a t:flyingPower.
+                    :clingFromCeiling a t:spiderLikePower.
+        
+                    t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                    t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+                   
+                    t:SuperHero rdfs:subClassOf t:Person;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:supernaturalPower.
+                    t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:flyingPower.   
+                    t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:spiderLikePower.
+                    t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .
+            
+            
                 :LoisLane :thinks :LoisLanesThoughts
                 GRAPH :LoisLanesThoughts {
                     :Superman :can :fly .
@@ -455,8 +480,46 @@ class TestProofWithOwl2RL {
             PREFIX conj: <https://w3id.org/conjectures/>
             PREFIX : <http://a#>
             PREFIX t: <http://t#>
+            
+
+            
         
             INSERT DATA {
+            
+            #######################################
+            #                                     #
+            #           SHARED KNOWLEDGE          #
+            #                                     #
+            #######################################
+        
+                    :Superman a t:Person.
+                    :ClarkKent a t:Person.
+        
+                    :LoisLane a t:Person.
+                    :MarthaKent a t:Person.
+                    :I a t:Person.
+                           
+                    t:FictionalPerson rdfs:subClassOf t:Person.
+                    t:RealPerson rdfs:subClassOf t:Person.
+                    t:FictionalPerson owl:complementOf t:RealPerson.
+                   
+                    :fly a t:flyingPower.
+                    :clingFromCeiling a t:spiderLikePower.
+        
+                    t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                    t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+                   
+                    t:SuperHero rdfs:subClassOf t:Person;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:supernaturalPower.
+                    t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:flyingPower.   
+                    t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:spiderLikePower.
+                    t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .    
+            
                 :LoisLane :thinks :LoisLanesThoughts
                 GRAPH :LoisLanesThoughts {
                     :Superman :can :fly .
@@ -532,6 +595,40 @@ class TestProofWithOwl2RL {
             PREFIX t: <http://t#>
         
             INSERT DATA {
+                #######################################
+            #                                     #
+            #           SHARED KNOWLEDGE          #
+            #                                     #
+            #######################################
+        
+                    :Superman a t:Person.
+                    :ClarkKent a t:Person.
+        
+                    :LoisLane a t:Person.
+                    :MarthaKent a t:Person.
+                    :I a t:Person.
+                           
+                    t:FictionalPerson rdfs:subClassOf t:Person.
+                    t:RealPerson rdfs:subClassOf t:Person.
+                    t:FictionalPerson owl:complementOf t:RealPerson.
+                   
+                    :fly a t:flyingPower.
+                    :clingFromCeiling a t:spiderLikePower.
+        
+                    t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                    t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+                   
+                    t:SuperHero rdfs:subClassOf t:Person;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:supernaturalPower.
+                    t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:flyingPower.   
+                    t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:spiderLikePower.
+                    t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .
+            
                 :LoisLane :thinks :LoisLanesThoughts
                 GRAPH :LoisLanesThoughts {
                     :Superman :can :fly .
@@ -605,6 +702,40 @@ class TestProofWithOwl2RL {
             PREFIX t: <http://t#>
         
             INSERT DATA {
+            
+                #######################################
+            #                                     #
+            #           SHARED KNOWLEDGE          #
+            #                                     #
+            #######################################
+        
+                    :Superman a t:Person.
+                    :ClarkKent a t:Person.
+        
+                    :LoisLane a t:Person.
+                    :MarthaKent a t:Person.
+                    :I a t:Person.
+                           
+                    t:FictionalPerson rdfs:subClassOf t:Person.
+                    t:RealPerson rdfs:subClassOf t:Person.
+                    t:FictionalPerson owl:complementOf t:RealPerson.
+                   
+                    :fly a t:flyingPower.
+                    :clingFromCeiling a t:spiderLikePower.
+        
+                    t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                    t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+                   
+                    t:SuperHero rdfs:subClassOf t:Person;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:supernaturalPower.
+                    t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:flyingPower.   
+                    t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:spiderLikePower.
+                    t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .
             
             #######################################
             #                                     #
@@ -746,6 +877,8 @@ class TestProofWithOwl2RL {
             PREFIX t: <http://t#>
         
             INSERT DATA {
+            
+            
             
             #######################################
             #                                     #
@@ -889,6 +1022,41 @@ class TestProofWithOwl2RL {
             PREFIX t: <http://t#>
         
             INSERT DATA {
+                #######################################
+            #                                     #
+            #           SHARED KNOWLEDGE          #
+            #                                     #
+            #######################################
+        
+                    :Superman a t:Person.
+                    :ClarkKent a t:Person.
+        
+                    :LoisLane a t:Person.
+                    :MarthaKent a t:Person.
+                    :I a t:Person.
+                           
+                    t:FictionalPerson rdfs:subClassOf t:Person.
+                    t:RealPerson rdfs:subClassOf t:Person.
+                    t:FictionalPerson owl:complementOf t:RealPerson.
+                   
+                    :fly a t:flyingPower.
+                    :clingFromCeiling a t:spiderLikePower.
+        
+                    t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                    t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+                   
+                    t:SuperHero rdfs:subClassOf t:Person;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:supernaturalPower.
+                    t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:flyingPower.   
+                    t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:spiderLikePower.
+                    t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .
+            
+            
                 :LoisLane :thinks :LoisLanesThoughts
                 GRAPH :LoisLanesThoughts {
                     :Superman :can :fly .
@@ -1027,6 +1195,41 @@ class TestProofWithOwl2RL {
             PREFIX t: <http://t#>
         
             INSERT DATA {
+            #######################################
+            #                                     #
+            #           SHARED KNOWLEDGE          #
+            #                                     #
+            #######################################
+        
+                    :Superman a t:Person.
+                    :ClarkKent a t:Person.
+        
+                    :LoisLane a t:Person.
+                    :MarthaKent a t:Person.
+                    :I a t:Person.
+                           
+                    t:FictionalPerson rdfs:subClassOf t:Person.
+                    t:RealPerson rdfs:subClassOf t:Person.
+                    t:FictionalPerson owl:complementOf t:RealPerson.
+                   
+                    :fly a t:flyingPower.
+                    :clingFromCeiling a t:spiderLikePower.
+        
+                    t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                    t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+                   
+                    t:SuperHero rdfs:subClassOf t:Person;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:supernaturalPower.
+                    t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:flyingPower.   
+                    t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:spiderLikePower.
+                    t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .
+                    
+                    
                 :LoisLane :thinks :LoisLanesThoughts
                 GRAPH :LoisLanesThoughts {
                     :Superman :can :fly .
@@ -1056,14 +1259,9 @@ class TestProofWithOwl2RL {
             PREFIX : <http://a#>
             
             select ?s ?p ?o ?g1 where {
-                            
-
                 ?task conj:hasSituatedContext ?g1.
-
-                 ?task conj:situateSchema conj:schemas\/thoughts.
+                ?task conj:situateSchema conj:schemas\/thoughts.
                 ?task conj:appendToContexts "-situated".
-                
-                
                 
                 graph conj:schemas\/thoughts {
                     rdf4j:nil a conj:SharedKnowledgeContext.
@@ -1072,15 +1270,9 @@ class TestProofWithOwl2RL {
                     :myThoughts a conj:SituatedContext.
                 }
 
-                               
-                
-                
-                
                graph ?g1 {
                    ?s ?p ?o .
                }  
-            
-
             }
         """.trimIndent()
 
@@ -1097,6 +1289,79 @@ class TestProofWithOwl2RL {
 
     }
 
+    @Test
+    fun `Renaming situations`() {
+        val addNamedGraphs = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+        
+            INSERT DATA {
+                :LoisLane :thinks :LoisLanesThoughts
+                GRAPH :LoisLanesThoughts {
+                    :Superman :can :fly .
+                    :Superman owl:differentFrom :ClarkKent.
+                    :Superman a t:RealPerson .
+                }
+                
+                :MarthaKent :thinks :MarthaKentsThoughts
+                GRAPH :MarthaKentsThoughts {
+                    :Superman :can :fly .
+                    :Superman owl:sameAs :ClarkKent.
+                    :Superman a t:RealPerson .
+                }
+                
+                :I :thinks :myThoughts
+                GRAPH :myThoughts {
+                    :Superman :can :clingFromCeiling .
+                    :Superman owl:sameAs :ClarkKent.
+                    :Superman a t:FictionalPerson .
+                }
+            }
+        """.trimIndent()
+
+        val situate1 = """
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+            PREFIX : <http://a#>
+            
+            select ?s ?p ?o ?g1 where {       
+                ?task conj:hasSituatedContext ?g1.
+
+                ?task conj:situateSchema conj:schemas\/thoughts.
+                ?task conj:appendToContexts "-situated".
+                
+                graph conj:schemas\/thoughts {
+                    rdf4j:nil a conj:SharedKnowledgeContext.
+                    :LoisLanesThoughts a conj:SituatedContext.
+                    :MarthaKentsThoughts a conj:SituatedContext.
+                    :myThoughts a conj:SituatedContext.
+                }
+
+               graph ?g1 {
+                   ?s ?p ?o .
+               }  
+            }
+        """.trimIndent()
+
+//        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+//            repo.connection.use {
+//                it.prepareUpdate(addNamedGraphs).execute()
+//                it.prepareTupleQuery(situate1).evaluate().map(BindingSet::toStringValueMap).toSet()
+//
+//            }
+//        }
+//        println("result1 ${result1.size} $result1")
+//
+//        assert(result1.isNotEmpty())
+        fail()
+    }
+
+
+
 
     companion object {
         @JvmField
@@ -1105,9 +1370,9 @@ class TestProofWithOwl2RL {
 
         private val sailParams = mapOf(
             "register-plugins" to SituatedInferencePlugin::class.qualifiedName as String,
-//                "ruleset" to "owl2-rl",
+                "ruleset" to "owl2-rl",
 //                "ruleset" to "owl-horst",
-            "ruleset" to "owl2-ql",
+//            "ruleset" to "owl2-ql",
 //            "check-for-inconsistencies" to "true",
         )
 
