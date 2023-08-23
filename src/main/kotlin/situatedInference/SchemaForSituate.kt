@@ -31,6 +31,15 @@ class SchemaForSituate(private val requestContext: SituatedInferenceContext) {
                 contextsToSituate += contextsWithPrefix
             }
 
+            subjectId != UNBOUND && predicateId == entities.resolve(RDF.TYPE) && objectId == regexToSituateId -> {
+                val regex = Regex(entities[subjectId]?.stringValue() ?: return false)
+                val contextsWithPrefix =
+                    requestContext.repositoryConnection.contextIDs.asSequence().map { it.context }
+                        .filter { entities[it]?.stringValue()?.matches(regex) == true }.toList()
+                contextsToSituate += contextsWithPrefix
+            }
+
+
             else -> return false
         }
         return true
