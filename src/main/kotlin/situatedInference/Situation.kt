@@ -39,16 +39,45 @@ class Situation(
         } ?: empty
     }
 
-    private fun refresh() {
+    fun materialize() {
+//        repositoryConnection.transaction {
+//            storage.find(0, 0, 0, 0).asSequence().filter { !it.isExplicit() }.forEach { stmt ->
+//                it.removeStatements(
+//                    stmt.subject,
+//                    stmt.predicate,
+//                    stmt.`object`
+//                )
+//            }
+//        }
+//
+//        refresh()
+
+        repositoryConnection.transaction {
+            storage.find(0, 0, 0, 0).asSequence().forEach { stmt ->
+                it.putStatement(
+                    stmt.subject,
+                    stmt.predicate,
+                    stmt.`object`,
+                    stmt.context,
+                    stmt.status
+                )
+            }
+        }
+    }
+
+    fun refresh() {
         storage.clear()
         getStatementsToSituate().forEach {
             inferClosureAndAddToStorage(it.subject, it.predicate, it.`object`, it.context)
         }
+
+
     }
 
     private fun getStatementsToSituate(): Sequence<Quad> =
         boundContexts.asSequence().map(::replaceDefaultGraphId).map { contextInScope ->
-            requestContext.situations[contextInScope]?.getAll()?.asSequence()
+            requestContext.singletons[contextInScope]?.let { sequenceOf(it) }
+                ?: requestContext.situations[contextInScope]?.getAll()?.asSequence()
                 ?: requestContext.repositoryConnection.getStatements(
                     UNBOUND,
                     UNBOUND,
@@ -76,14 +105,15 @@ class Situation(
             if (inferencer.hasConsistencyRules()) {
                 logger.debug("ruleset has consistency rules")
                 val currentInferencer = (inferencer as SwitchableInferencer).currentInferencer
-                val result = InjectedInferencer(currentInferencer, consistencyCheckTask).checkForInconsistencies(
+                val inconsistencies = currentInferencer.checkForInconsistencies(
                     repositoryConnection.entityPoolConnection,
                     it.subject,
                     it.predicate,
                     it.`object`,
                     it.context,
-                    0
+                    it.status
                 )
+                if (inconsistencies.isNotBlank()) logger.debug("inconsistencies {}", inconsistencies)
             }
             logger.debug("Running inference with {}", getPrettyStringFor(it.subject, it.predicate, it.`object`))
 

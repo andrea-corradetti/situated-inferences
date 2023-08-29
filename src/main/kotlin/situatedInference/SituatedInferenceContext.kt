@@ -2,11 +2,7 @@ package situatedInference
 
 import com.ontotext.trree.AbstractInferencer
 import com.ontotext.trree.AbstractRepositoryConnection
-import com.ontotext.trree.sdk.PluginException
-import com.ontotext.trree.sdk.QueryRequest
-import com.ontotext.trree.sdk.Request
-import com.ontotext.trree.sdk.RequestContext
-import com.ontotext.trree.sdk.SystemPluginOptions
+import com.ontotext.trree.sdk.*
 import org.slf4j.Logger
 import kotlin.properties.Delegates
 
@@ -17,6 +13,9 @@ class SituatedInferenceContext(
 ) : RequestContext {
 
     var sharedScope by Delegates.notNull<Long>()
+    val singletons = mutableMapOf<Long, Quad>()
+
+    val inMemoryContexts = mutableMapOf<Long, InMemoryContext>()
 
     val situations = mutableMapOf<Long, Situation>()
 
@@ -39,7 +38,7 @@ class SituatedInferenceContext(
     companion object {
         fun fromRequest(request: Request, logger: Logger? = null): SituatedInferenceContext {
 
-            println("dataset ${ (request as QueryRequest).dataset}")
+            println("dataset ${(request as QueryRequest).dataset}")
 
             val options =
                 request.options as? SystemPluginOptions ?: throw PluginException("SystemPluginOptions are null")

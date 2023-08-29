@@ -2,6 +2,8 @@ package situatedInference
 
 import com.ontotext.trree.AbstractRepositoryConnection
 import com.ontotext.trree.StatementIdIterator
+import com.ontotext.trree.entitypool.EntityPool
+import com.ontotext.trree.entitypool.EntityPoolConnection
 import com.ontotext.trree.entitypool.PluginEntitiesAdapter
 import com.ontotext.trree.sdk.Entities
 import com.ontotext.trree.sdk.PluginException
@@ -34,7 +36,7 @@ class SituateTask(private val requestContext: SituatedInferenceContext) {
             createSituations()
         }
         val statements = createdSituationsIds.asSequence().map {
-            requestContext.situations[it]?.find(subjectId, predicateId, objectId, contextId)
+            requestContext.situations[it]?.apply { refresh() }?.find(subjectId, predicateId, objectId, contextId)
                 ?.asSequence()  //TODO consider changing with contextId
                 ?: emptySequence()
         }.flatten()
@@ -48,8 +50,15 @@ class SituateTask(private val requestContext: SituatedInferenceContext) {
         val name =
             schema.contextToNameForSituation[contextId] ?: (entities[contextId].stringValue() + suffixForNewNames)
         val newSituationId = requestContext.repositoryConnection.transaction {
-            entities.put(iri(name), Entities.Scope.REQUEST)
+            it.entityPoolConnection.transaction {
+                it.entities.put(iri(name), Entities.Scope.REQUEST)
+            }
+
         }
+
+
+
+
         return Situation(requestContext, newSituationId, schema.sharedContexts + contextId)
     }
 
@@ -65,8 +74,21 @@ class SituateTask(private val requestContext: SituatedInferenceContext) {
 fun <R> AbstractRepositoryConnection.transaction(block: (AbstractRepositoryConnection) -> R): R {
     try {
         this.beginTransaction()
-        val result = block(this)
         this.precommit()
+        val result = block(this)
+        this.commit()
+        return result
+    } catch (e: Exception) {
+        this.rollback()
+        throw e
+    }
+}
+
+fun <R> EntityPoolConnection.transaction(block: (EntityPoolConnection) -> R): R {
+    try {
+        this.beginExclusive()
+        this.precommit()
+        val result = block(this)
         this.commit()
         return result
     } catch (e: Exception) {

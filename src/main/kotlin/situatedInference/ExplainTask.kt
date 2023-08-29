@@ -1,6 +1,9 @@
 package situatedInference
 
-import com.ontotext.trree.*
+import com.ontotext.trree.AbstractInferencer
+import com.ontotext.trree.AbstractRepositoryConnection
+import com.ontotext.trree.ReportSupportedSolution
+import com.ontotext.trree.StatementIdIterator
 import com.ontotext.trree.query.QueryResultIterator
 import com.ontotext.trree.query.StatementSource
 import org.slf4j.Logger
@@ -18,39 +21,59 @@ class ExplainTask(
     private val logger: Logger? = requestContext.logger
     private var inferencer: AbstractInferencer = requestContext.inferencer
     private var repositoryConnection: AbstractRepositoryConnection =
-        requestContext.repositoryConnection // connection to the raw data to get only the AXIOM statements ???
+        requestContext.repositoryConnection
 
     private var isExplicit: Boolean = explicitStatementProps.isExplicit
     private var isDerivedFromSameAs: Boolean = explicitStatementProps.isDerivedFromSameAs
     private var explicitContext: Long = explicitStatementProps.explicitContext //FIXME possibly misguiding name
 
-    var solutions = mutableSetOf<Solution>()
-
-    init {
-        init()
-    }
+    private var solutions = mutableSetOf<Solution>()
 
 
     //TODO move logic out of constructor
-    private fun init() {
-        if (isExplicit) {
-            val antecedent = Quad(
-                statementToExplain.subject,
-                statementToExplain.predicate,
-                statementToExplain.`object`,
-                explicitContext,
-                0
+//    private fun explain(subjectId: Long, predicateId: Long, objectId: Long, contextId: Long = 0) {
+//        val props = repositoryConnection.getExplicitStatementProps(subjectId, predicateId, objectId, contextId)
+//
+//        if (statement.isExplicit()) {
+//            val antecedent = Quad(
+//                subject,
+//                statement.predicate,
+//                statement.`object`,
+//                explicitContext,
+//                0
+//            )
+//            solutions.add(Solution("explicit", listOf(antecedent)))
+//        } else {
+//            inferencer.isSupported(
+//                statementToExplain.subject, statementToExplain.predicate, statementToExplain.`object`, 0, 0, this
+//            ) //this method callbacks overridden methods from ReportSupportedSolution on this
+//        }
+//    }
+
+    private fun AbstractRepositoryConnection.getExplicitStatementProps(
+        triple: Triple
+    ): ExplicitStatementProps = this.getExplicitStatementProps(triple.subject, triple.predicate, triple.`object`)
+
+    private fun AbstractRepositoryConnection.getExplicitStatementProps(
+        subjToExplain: Long, predToExplain: Long, objToExplain: Long,
+    ): ExplicitStatementProps {
+
+        val iterForProps = getStatements(
+            subjToExplain, predToExplain, objToExplain, excludeDeletedHiddenInferred
+        )
+        iterForProps.use {
+            logger?.debug("context in explicit props " + iterForProps.context)
+            // handle if explicit comes from sameAs
+            return ExplicitStatementProps(
+                isExplicit = iterForProps.hasNext(),
+                explicitContext = iterForProps.context,
+                isDerivedFromSameAs = iterForProps.status and StatementIdIterator.SKIP_ON_REINFER_STATEMENT_STATUS != 0
             )
-            solutions.add(Solution("explicit", listOf(antecedent)))
-        } else {
-            inferencer.isSupported(
-                statementToExplain.subject, statementToExplain.predicate, statementToExplain.`object`, 0, 0, this
-            ) //this method callbacks overridden methods from ReportSupportedSolution on this
         }
     }
 
 
-    //Triggered by inferencer.isSupported as callback
+    //callback for inferencer.isSupported
     override fun report(ruleName: String, queryResultIterator: QueryResultIterator): Boolean {
         logger!!.debug(
             "report rule {} for {},{},{}",
@@ -119,4 +142,15 @@ class ExplainTask(
         }
     }
 
+}
+
+
+fun QueryResultIterator.asSequence() = sequence<StatementIdIterator> {
+    while (this@asSequence.hasNext()) {
+        if (this@asSequence !is StatementSource) {
+            continue
+        }
+        this@asSequence.solution().forEach { yield(it) }
+    }
+    this@asSequence.close()
 }
