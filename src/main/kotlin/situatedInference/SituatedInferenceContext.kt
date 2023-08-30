@@ -13,7 +13,7 @@ class SituatedInferenceContext(
 ) : RequestContext {
 
     var sharedScope by Delegates.notNull<Long>()
-    val singletons = mutableMapOf<Long, Quad>()
+    val singletons = mutableMapOf<Long, Singleton>()
 
     val inMemoryContexts = mutableMapOf<Long, InMemoryContext>()
 
