@@ -4,11 +4,11 @@ import com.ontotext.trree.StatementIdIterator
 import com.ontotext.trree.StatementIdIterator.*
 
 data class Quad(
-    @JvmField val subject: Long,
-    @JvmField val predicate: Long,
-    @JvmField val `object`: Long,
-    @JvmField val context: Long = 0,
-    @JvmField val status: Int = 0, //FIXME inconsistent between StatementIterator and StatementIdIterator. Consider subclassing
+    val subject: Long,
+    val predicate: Long,
+    val `object`: Long,
+    val context: Long = 0,
+    val status: Int = 0, //FIXME inconsistent between StatementIterator and StatementIdIterator. Consider subclassing
 ) {
     constructor(array: LongArray) : this(
         array[0],
@@ -26,7 +26,21 @@ data class Quad(
         iterator.status
     )
 
-    fun asList() =  listOf(subject, predicate, `object`, context, status)
+    fun withField(
+        subject: Long? = null,
+        predicate: Long? = null,
+        `object`: Long? = null,
+        context: Long? = null,
+        status: Int? = null,
+    ) = Quad(
+        subject ?: this.subject,
+        predicate ?: this.predicate,
+        `object` ?: this.`object`,
+        context ?: this.context,
+        status ?: this.status
+    )
+
+    fun asList() = listOf(subject, predicate, `object`, context, status)
 
     fun isExplicit(): Boolean = status and EXPLICIT_STATEMENT_STATUS != 0
 

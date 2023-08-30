@@ -59,11 +59,11 @@ abstract class ContextWithStorage() : InMemoryContext {
 }
 
 
-class SimpleContext(val id: Long) : ContextWithStorage() {
+class SimpleContext() : ContextWithStorage() {
 
     companion object {
-        fun fromSequence(id: Long, sequence: Sequence<Quad>): SimpleContext {
-            return SimpleContext(id).apply {
+        fun fromSequence(sequence: Sequence<Quad>): SimpleContext {
+            return SimpleContext().apply {
                 addAll(sequence.toList())
             }
         }

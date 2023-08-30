@@ -120,6 +120,10 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             return null
         }
 
+        if ((requestContext.request as QueryRequest).hasSystemGraphs()) {
+            return null
+        }
+
         if (predicateId == asTripleId) {
             val entities = pluginConnection.entities
             val statements = pluginConnection.statements
@@ -148,52 +152,23 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             )
             val tripleId = entities.put(triple, REQUEST)
 
-            return StatementIterator.create(statementId, predicateId, tripleId, contextId)
+            return StatementIterator.create(statementId, asTripleId, tripleId, contextId)
         }
 
         if (predicateId == asSingletonId) {
-            val entities = pluginConnection.entities
-            val statements = pluginConnection.statements
-            val statementId = if (subjectId != UNBOUND) subjectId else return StatementIterator.EMPTY
-            val isReifiedStatement =
-                statements.get(statementId, entities.resolve(RDF.TYPE), entities.resolve(RDF.STATEMENT)).asSequence()
-                    .any()
-
-            if (!isReifiedStatement) {
-                return StatementIterator.EMPTY
-            }
-            val reifiedSubject =
-                statements.get(statementId, entities.resolve(RDF.SUBJECT), UNBOUND).asSequence().firstOrNull()?.`object`
-                    ?: return StatementIterator.EMPTY
-            val reifiedPredicate =
-                statements.get(statementId, entities.resolve(RDF.PREDICATE), UNBOUND).asSequence()
-                    .firstOrNull()?.`object`
-                    ?: return StatementIterator.EMPTY
-            val reifiedObject =
-                statements.get(statementId, entities.resolve(RDF.OBJECT), UNBOUND).asSequence().firstOrNull()?.`object`
-                    ?: return StatementIterator.EMPTY
-
-
-            val singletonId = if (objectId != UNBOUND) objectId else entities.put(bnode(), REQUEST)
-
-            requestContext.inMemoryContexts[singletonId] =
-                Singleton(statementId, Quad(reifiedSubject, reifiedPredicate, reifiedObject, singletonId))
-
-            return StatementIterator.create(statementId, predicateId, singletonId, contextId)
+            return handleAsSingleton(pluginConnection, subjectId, objectId, requestContext, contextId)
         }
 
         if (predicateId == reifiesGraphId) {
-            val graphId = if (objectId != UNBOUND) objectId else return StatementIterator.EMPTY
+            val graphToReify = if (objectId != UNBOUND) objectId else return StatementIterator.EMPTY
             val reifiedGraphId =
                 if (subjectId != UNBOUND) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
-            val statementsToReify = requestContext.inMemoryContexts[graphId]?.getAll()
-                ?: pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, graphId).asSequence()
+            val statementsToReify = requestContext.inMemoryContexts[graphToReify]?.getAll()
+                ?: pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, graphToReify).asSequence()
             val reifiedStatements = statementsToReify.map { pluginConnection.getReification(it) }.flatten()
-            requestContext.inMemoryContexts[reifiedGraphId] =
-                SimpleContext.fromSequence(reifiedGraphId, reifiedStatements)
+            requestContext.inMemoryContexts[reifiedGraphId] = SimpleContext.fromSequence(reifiedStatements)
 
-
-            return StatementIterator.create(reifiedGraphId, predicateId, graphId, contextId)
+            return StatementIterator.create(reifiedGraphId, predicateId, graphToReify, contextId)
         }
 
 
@@ -234,18 +209,83 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
                 ?.onEach { logger.debug("QUAD {}", it) }?.count()
         )
 
-        val statements =
-            requestContext.inMemoryContexts[contextId]?.find(subjectId, predicateId, objectId)
-                ?: (pluginConnection.statements.get(subjectId, predicateId, objectId, contextId).asSequence() +
-                        if ((requestContext.request as QueryRequest).dataset == null) //TODO remove this check
-                            requestContext.inMemoryContexts.findInAll(
-                                subjectId,
-                                predicateId,
-                                objectId,
-                                contextId
-                            ) else return null)
 
-        return statements.toStatementIterator()
+        val statements = if (contextId == UNBOUND)
+            (pluginConnection.statements.get(subjectId, predicateId, objectId, contextId).asSequence() +
+                    requestContext.inMemoryContexts.findInAll(subjectId, predicateId, objectId, contextId))
+        else
+            requestContext.inMemoryContexts[contextId]?.find(subjectId, predicateId, objectId)
+                ?: pluginConnection.statements.get(subjectId, predicateId, objectId, contextId).asSequence()
+
+        val quotingStatements =
+            (requestContext.quotingInSubject[subjectId]?.getAll() ?: emptySequence()) +
+                    (requestContext.quotingInObject[objectId]?.getAll() ?: emptySequence())
+
+        return (statements + quotingStatements).toStatementIterator()
+    }
+
+    private fun handleAsSingleton(
+        pluginConnection: PluginConnection,
+        subjectId: Long,
+        objectId: Long,
+        requestContext: SituatedInferenceContext,
+        contextId: Long
+    ): StatementIterator? {
+        val entities = pluginConnection.entities
+        val statements = pluginConnection.statements
+        val statementId = if (subjectId != UNBOUND) subjectId else return StatementIterator.EMPTY
+        val isReifiedStatement =
+            statements.get(statementId, entities.resolve(RDF.TYPE), entities.resolve(RDF.STATEMENT)).asSequence()
+                .any()
+
+        if (!isReifiedStatement) {
+            return StatementIterator.EMPTY
+        }
+        val reifiedSubject =
+            statements.get(statementId, entities.resolve(RDF.SUBJECT), UNBOUND).asSequence().firstOrNull()?.`object`
+                ?: return StatementIterator.EMPTY
+        val reifiedPredicate =
+            statements.get(statementId, entities.resolve(RDF.PREDICATE), UNBOUND).asSequence()
+                .firstOrNull()?.`object`
+                ?: return StatementIterator.EMPTY
+        val reifiedObject =
+            statements.get(statementId, entities.resolve(RDF.OBJECT), UNBOUND).asSequence().firstOrNull()?.`object`
+                ?: return StatementIterator.EMPTY
+
+
+        val singletonId = if (objectId != UNBOUND) objectId else entities.put(bnode(), REQUEST)
+
+        requestContext.inMemoryContexts[singletonId] =
+            Singleton(statementId, Quad(reifiedSubject, reifiedPredicate, reifiedObject, singletonId))
+
+        val statementInSubject = statements.get(statementId, 0, 0).asSequence()
+        val statementInObject = statements.get(0, 0, statementId).asSequence()
+        val replacedInSubject = statementInSubject.map {
+            replaceQuotedStatementWithSingleton(it, statementId, singletonId)
+        }
+        val replacedInObject = statementInObject.map {
+            replaceQuotedStatementWithSingleton(it, statementId, singletonId)
+        }
+        requestContext.quotingInSubject[singletonId] = SimpleContext.fromSequence(replacedInSubject)
+        requestContext.quotingInObject[singletonId] = SimpleContext.fromSequence(replacedInObject)
+        requestContext.statementIdToSingletonId[statementId] = singletonId
+
+        return StatementIterator.create(statementId, asSingletonId, singletonId, contextId)
+    }
+
+    private fun replaceQuotedStatementWithSingleton(
+        it: Quad,
+        statementId: Long,
+        singletonId: Long
+    ) = when {
+        it.subject == statementId && it.`object` == statementId -> it.withField(
+            subject = singletonId,
+            `object` = singletonId
+        )
+
+        it.subject == statementId -> it.withField(subject = singletonId)
+        it.`object` == statementId -> it.withField(`object` = singletonId)
+        else -> it
     }
 
     private fun PluginConnection.getReification(
@@ -442,6 +482,8 @@ private fun PluginConnection.getReifiedStatementId(subject: Long, predicate: Lon
     return (matchSubject intersect matchPredicate intersect matchObject).firstOrNull()
 }
 
+fun QueryRequest.hasSystemGraphs() =
+    this.dataset?.defaultGraphs?.any { it.namespace.startsWith(SystemGraphs.NAMESPACE) } == true
 
 fun replaceDefaultGraphId(it: Long) = when (it) {
     SystemGraphs.RDF4J_NIL.id.toLong() -> SystemGraphs.EXPLICIT_GRAPH.id.toLong() //TODO consider whether readwrite would be more accurate

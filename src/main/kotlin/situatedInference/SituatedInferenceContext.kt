@@ -12,13 +12,14 @@ class SituatedInferenceContext(
     val logger: Logger? = null,
 ) : RequestContext {
 
+    val quotingInSubject = mutableMapOf<Long, SimpleContext>()
+    val quotingInObject = mutableMapOf<Long, SimpleContext>()
 
     var sharedScope by Delegates.notNull<Long>()
-//    val singletons = mutableMapOf<Long, Singleton>()
+
+    val statementIdToSingletonId = mutableMapOf<Long, Long>()
 
     val inMemoryContexts = mutableMapOf<Long, InMemoryContext>()
-
-//    val situations = mutableMapOf<Long, Situation>()
 
     val situateTasks = mutableMapOf<Long, SituateTask>()
     val explainTasks = mutableMapOf<Long, ExplainTask>()
@@ -66,15 +67,3 @@ fun MutableMap<Long, InMemoryContext>.findInAll(
     return values.asSequence().map { it.find(subjectId, predicateId, objectId, contextId, status) }.flatten()
 }
 
-
-class InMemoryContextsMap() : MutableMap<Long, InMemoryContext> by mutableMapOf() {
-    fun findInAll(
-        subjectId: Long,
-        predicateId: Long,
-        objectId: Long,
-        contextId: Long = 0,
-        status: Int = 0
-    ): Sequence<Quad> {
-        return values.asSequence().map { it.find(subjectId, predicateId, objectId, contextId, status) }.flatten()
-    }
-}
