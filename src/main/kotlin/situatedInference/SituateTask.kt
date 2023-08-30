@@ -47,7 +47,7 @@ class SituateTask(private val requestContext: SituatedInferenceContext) {
     fun createSituations() {
         (schema!!.contextsToSituate - createdSituationsIds).forEach { contextId ->
             val situation = createSituationOfContext(contextId)
-            requestContext.situations[situation.id] = situation
+            requestContext.inMemoryContexts[situation.id] = situation
             createdSituationsIds.add(situation.id)
         }
     }

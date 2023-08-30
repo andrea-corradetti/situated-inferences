@@ -148,7 +148,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             )
             val tripleId = entities.put(triple, REQUEST)
 
-            return StatementIterator.create(subjectId, predicateId, tripleId, contextId)
+            return StatementIterator.create(statementId, predicateId, tripleId, contextId)
         }
 
         if (predicateId == asSingletonId) {
@@ -176,18 +176,17 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
             val singletonId = if (objectId != UNBOUND) objectId else entities.put(bnode(), REQUEST)
 
-            requestContext.singletons[singletonId] =
+            requestContext.inMemoryContexts[singletonId] =
                 Singleton(statementId, Quad(reifiedSubject, reifiedPredicate, reifiedObject, singletonId))
 
-            return StatementIterator.create(subjectId, predicateId, singletonId, contextId)
+            return StatementIterator.create(statementId, predicateId, singletonId, contextId)
         }
 
         if (predicateId == reifiesGraphId) {
             val graphId = if (objectId != UNBOUND) objectId else return StatementIterator.EMPTY
             val reifiedGraphId =
                 if (subjectId != UNBOUND) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
-            val statementsToReify = requestContext.singletons[graphId]?.let { sequenceOf(it.singletonQuad) }
-                ?: requestContext.situations[graphId]?.getAll()?.asSequence()
+            val statementsToReify = requestContext.inMemoryContexts[graphId]?.getAll()
                 ?: pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, graphId).asSequence()
             val reifiedStatements = statementsToReify.map { pluginConnection.getReification(it) }.flatten()
             requestContext.inMemoryContexts[reifiedGraphId] =
@@ -227,59 +226,26 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
 
         requestContext.situateTasks.values.forEach { it.createSituations() } //TODO rewrite so this is unnecessary
-        requestContext.situations.values.forEach { it.refresh(); /*it.materialize()*/ }
+        requestContext.inMemoryContexts.values.filterIsInstance<Situation>().forEach { it.refresh() }
 
         logger.debug(
             "sequence count {}",
-            requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)?.asSequence()
+            requestContext.inMemoryContexts[contextId]?.find(subjectId, predicateId, objectId)
                 ?.onEach { logger.debug("QUAD {}", it) }?.count()
         )
 
-        requestContext.singletons[contextId]?.let {
-            return StatementIterator.create(
-                it.singletonQuad.subject,
-                it.singletonQuad.predicate,
-                it.singletonQuad.`object`,
-                it.singletonQuad.context
-            )
-        }
+        val statements =
+            requestContext.inMemoryContexts[contextId]?.find(subjectId, predicateId, objectId)
+                ?: (pluginConnection.statements.get(subjectId, predicateId, objectId, contextId).asSequence() +
+                        if ((requestContext.request as QueryRequest).dataset == null) //TODO remove this check
+                            requestContext.inMemoryContexts.findInAll(
+                                subjectId,
+                                predicateId,
+                                objectId,
+                                contextId
+                            ) else return null)
 
-        requestContext.inMemoryContexts[contextId]?.let {
-            return it.storage.find(subjectId, predicateId, objectId).toStatementIterator()
-        }
-
-        requestContext.situations[contextId]?.let {
-            return it.find(subjectId, predicateId, objectId).toStatementIterator()
-        }
-
-
-//        requestContext.situations[contextId]?.let {
-//            return it.find(subjectId, predicateId, objectId).toStatementIterator()
-//        }
-
-
-//        val statements = requestContext.singletons[contextId]?.let { sequenceOf(it.singletonQuad) }
-//            ?: requestContext.inMemoryContexts[contextId]?.storage?.find(subjectId, predicateId, objectId)?.asSequence()
-//            ?: requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)?.asSequence()
-//            ?: if ((requestContext.request as QueryRequest).dataset == null)
-//                pluginConnection.statements.get(subjectId, predicateId, objectId, contextId)
-//                    .asSequence() + requestContext.situations.values.asSequence()
-//                    .map { it.find(subjectId, predicateId, objectId).asSequence() }.flatten()   //FIXME this is a mess
-//            else return null
-//
-//
-
-        return requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)
-            ?.toStatementIterator()
-            ?: if ((requestContext.request as QueryRequest).dataset == null)
-                (pluginConnection.statements.get(subjectId, predicateId, objectId, contextId)
-                    .asSequence() + requestContext.situations.values.asSequence()
-                    .map { it.find(subjectId, predicateId, objectId).asSequence() }.flatten()   //FIXME this is a mess
-                        ).toStatementIterator()
-            else
-                null
-
-
+        return statements.toStatementIterator()
     }
 
     private fun PluginConnection.getReification(
@@ -424,7 +390,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
 //        val sharedSituation = requestContext.situations[sharedId]
 
-        requestContext.situations[situationId] = Situation(
+        requestContext.inMemoryContexts[situationId] = Situation(
             requestContext, situationId, objectsIds.toSet()
         )
 
@@ -475,7 +441,6 @@ private fun PluginConnection.getReifiedStatementId(subject: Long, predicate: Lon
 
     return (matchSubject intersect matchPredicate intersect matchObject).firstOrNull()
 }
-
 
 
 fun replaceDefaultGraphId(it: Long) = when (it) {

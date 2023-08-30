@@ -68,8 +68,7 @@ class Situation(
 
     private fun getStatementsToSituate(): Sequence<Quad> =
         boundContexts.asSequence().map(::replaceDefaultGraphId).map { contextInScope ->
-            requestContext.singletons[contextInScope]?.let { sequenceOf(it.singletonQuad) }
-                ?: requestContext.situations[contextInScope]?.getAll()?.asSequence()
+            requestContext.inMemoryContexts[contextInScope]?.getAll()
                 ?: requestContext.repositoryConnection.getStatements(
                     UNBOUND,
                     UNBOUND,

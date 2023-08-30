@@ -14,11 +14,11 @@ class SituatedInferenceContext(
 
 
     var sharedScope by Delegates.notNull<Long>()
-    val singletons = mutableMapOf<Long, Singleton>()
+//    val singletons = mutableMapOf<Long, Singleton>()
 
-    val inMemoryContexts = mutableMapOf<Long, SimpleContext>()
+    val inMemoryContexts = mutableMapOf<Long, InMemoryContext>()
 
-    val situations = mutableMapOf<Long, Situation>()
+//    val situations = mutableMapOf<Long, Situation>()
 
     val situateTasks = mutableMapOf<Long, SituateTask>()
     val explainTasks = mutableMapOf<Long, ExplainTask>()
@@ -53,5 +53,28 @@ class SituatedInferenceContext(
                 setRequest(request)
             }
         }
+    }
+}
+
+fun MutableMap<Long, InMemoryContext>.findInAll(
+    subjectId: Long,
+    predicateId: Long,
+    objectId: Long,
+    contextId: Long = 0,
+    status: Int = 0
+): Sequence<Quad> {
+    return values.asSequence().map { it.find(subjectId, predicateId, objectId, contextId, status) }.flatten()
+}
+
+
+class InMemoryContextsMap() : MutableMap<Long, InMemoryContext> by mutableMapOf() {
+    fun findInAll(
+        subjectId: Long,
+        predicateId: Long,
+        objectId: Long,
+        contextId: Long = 0,
+        status: Int = 0
+    ): Sequence<Quad> {
+        return values.asSequence().map { it.find(subjectId, predicateId, objectId, contextId, status) }.flatten()
     }
 }

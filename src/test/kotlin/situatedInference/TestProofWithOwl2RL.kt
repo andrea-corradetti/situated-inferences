@@ -478,11 +478,7 @@ class TestProofWithOwl2RL {
             PREFIX : <http://a#>
             PREFIX t: <http://t#>
             
-
-            
-        
             INSERT DATA {
-            
             #######################################
             #                                     #
             #           SHARED KNOWLEDGE          #
@@ -576,8 +572,10 @@ class TestProofWithOwl2RL {
             }
         }
 
-        println("result set $result")
+        println("result set ${result.size} $result")
         assert(result.isNotEmpty())
+        assert(result.size == 136)
+        assert(result.all { it["g1"] == "http://a#LoisLanesThoughts-situated" })
 
     }
 
@@ -684,7 +682,7 @@ class TestProofWithOwl2RL {
         }
 
         println("result set ${result.size} $result")
-        assert(result.isNotEmpty())
+        assert(result.size == 408)
 
     }
 
@@ -2016,7 +2014,7 @@ class TestProofWithOwl2RL {
         }
         println("result1 set ${result1.size} $result1")
 
-        assert(result1.isNotEmpty())
+        assert(result1.size == 1)
         assert(
             result1.contains(
                 mapOf(
