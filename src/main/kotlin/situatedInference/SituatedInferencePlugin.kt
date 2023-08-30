@@ -1,6 +1,5 @@
 package situatedInference
 
-import com.ontotext.trree.StatementIdIterator
 import com.ontotext.trree.SystemGraphs
 import com.ontotext.trree.sdk.*
 import com.ontotext.trree.sdk.Entities.Scope.REQUEST
@@ -192,7 +191,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
                 ?: pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, graphId).asSequence()
             val reifiedStatements = statementsToReify.map { pluginConnection.getReification(it) }.flatten()
             requestContext.inMemoryContexts[reifiedGraphId] =
-                InMemoryContext.fromSequence(reifiedGraphId, reifiedStatements)
+                SimpleContext.fromSequence(reifiedGraphId, reifiedStatements)
 
 
             return StatementIterator.create(reifiedGraphId, predicateId, graphId, contextId)
@@ -258,28 +257,27 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 //            return it.find(subjectId, predicateId, objectId).toStatementIterator()
 //        }
 
-//
-//        val statements = requestContext.singletons[contextId]?.let { sequenceOf(it.singletonQuad) }
-//            ?: requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)?.asSequence()
-//            ?:
 
-            return requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)
-                ?.toStatementIterator()
-                ?: requestContext.situateTasks[contextId]?.findInBoundSituations(subjectId, predicateId, objectId)
-                    ?.toStatementIterator()
-                ?: if ((requestContext.request as QueryRequest).dataset == null)
-                    statementIteratorFromSequence(
-                        pluginConnection.statements.get(
-                            subjectId,
-                            predicateId,
-                            objectId,
-                            contextId
-                        ).asSequence() + requestContext.situations.values.asSequence()
-                            .map { it.find(subjectId, predicateId, objectId).asSequence() }
-                            .flatten()   //FIXME this is a mess
-                    )
-                else
-                    null
+//        val statements = requestContext.singletons[contextId]?.let { sequenceOf(it.singletonQuad) }
+//            ?: requestContext.inMemoryContexts[contextId]?.storage?.find(subjectId, predicateId, objectId)?.asSequence()
+//            ?: requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)?.asSequence()
+//            ?: if ((requestContext.request as QueryRequest).dataset == null)
+//                pluginConnection.statements.get(subjectId, predicateId, objectId, contextId)
+//                    .asSequence() + requestContext.situations.values.asSequence()
+//                    .map { it.find(subjectId, predicateId, objectId).asSequence() }.flatten()   //FIXME this is a mess
+//            else return null
+//
+//
+
+        return requestContext.situations[contextId]?.find(subjectId, predicateId, objectId)
+            ?.toStatementIterator()
+            ?: if ((requestContext.request as QueryRequest).dataset == null)
+                (pluginConnection.statements.get(subjectId, predicateId, objectId, contextId)
+                    .asSequence() + requestContext.situations.values.asSequence()
+                    .map { it.find(subjectId, predicateId, objectId).asSequence() }.flatten()   //FIXME this is a mess
+                        ).toStatementIterator()
+            else
+                null
 
 
     }
@@ -479,66 +477,9 @@ private fun PluginConnection.getReifiedStatementId(subject: Long, predicate: Lon
 }
 
 
-fun StatementIterator.asSequence() = sequence {
-    while (next()) {
-        yield(Quad(subject, predicate, `object`, context))
-    }
-    this@asSequence.close()
-}.constrainOnce()
-
-
-fun StatementIdIterator.asSequence() = sequence {
-    while (hasNext()) {
-        yield(Quad(subj, pred, obj, context, status))
-        next()
-    }
-    this@asSequence.close()
-}.constrainOnce()
-
-fun statementIteratorFromSequence(sequence: Sequence<Quad>) = object : StatementIterator() {
-    val iterator = sequence.iterator()
-
-    override fun next(): Boolean {
-        if (iterator.hasNext()) {
-            val current = iterator.next()
-            this.subject = current.subject
-            this.predicate = current.predicate
-            this.`object` = current.`object`
-            this.context = current.context
-            return true
-        }
-        return false
-    }
-
-    override fun close() {}
-
-}
-
-fun StatementIdIterator.toStatementIterator(): StatementIterator {
-    return object : StatementIterator() {
-        override fun next(): Boolean {
-            if (this@toStatementIterator.hasNext()) {
-                subject = this@toStatementIterator.subj
-                predicate = this@toStatementIterator.pred
-                `object` = this@toStatementIterator.obj
-                context = this@toStatementIterator.context
-                this@toStatementIterator.next()
-                return true
-            }
-            return false
-
-        }
-
-        override fun close() {
-            this@toStatementIterator.close()
-        }
-    }
-
-}
 
 fun replaceDefaultGraphId(it: Long) = when (it) {
     SystemGraphs.RDF4J_NIL.id.toLong() -> SystemGraphs.EXPLICIT_GRAPH.id.toLong() //TODO consider whether readwrite would be more accurate
     else -> it
 }
 
-fun Sequence<Quad>.toStatementIterator(): StatementIterator = statementIteratorFromSequence(this)

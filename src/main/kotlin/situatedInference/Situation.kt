@@ -5,7 +5,6 @@ import com.ontotext.trree.AbstractInferencerTask
 import com.ontotext.trree.StatementIdIterator
 import com.ontotext.trree.StatementIdIterator.*
 import com.ontotext.trree.SwitchableInferencer
-import com.ontotext.trree.plugin.provenance.MemoryStorage
 import com.ontotext.trree.plugin.provenance.Storage
 import com.ontotext.trree.sdk.Entities.Type.LITERAL
 import com.ontotext.trree.sdk.Entities.Type.URI
@@ -18,25 +17,20 @@ class Situation(
     private val requestContext: SituatedInferenceContext,
     val id: Long,
     private val boundContexts: Set<Long>,
-) : AbstractInferencerTask {
+) : ContextWithStorage(), AbstractInferencerTask {
     private val logger = LoggerFactory.getLogger(this.javaClass)
-    private val storage: Storage = MemoryStorage()
     private val inferencer = requestContext.inferencer
     private val repositoryConnection = requestContext.repositoryConnection
 
     private var isUpdated = false
 
-    fun find(subjectId: Long, predicateId: Long, objectId: Long, contextId: Long? = null): StatementIdIterator {
+    fun refreshAndFind(subjectId: Long, predicateId: Long, objectId: Long, contextId: Long = 0): Sequence<Quad> {
         if (!isUpdated) {
             refresh()
             isUpdated = true
         }
         logger.debug("total size in find {}", storage.size())
-        return if (contextId == null) {
-            storage.find(subjectId, predicateId, objectId, 0)
-        } else {
-            storage.find(subjectId, predicateId, objectId, contextId)
-        } ?: empty
+        return find(subjectId, predicateId, objectId, contextId)
     }
 
     fun materialize() {
@@ -70,8 +64,6 @@ class Situation(
         getStatementsToSituate().forEach {
             inferClosureAndAddToStorage(it.subject, it.predicate, it.`object`, it.context)
         }
-
-
     }
 
     private fun getStatementsToSituate(): Sequence<Quad> =
@@ -212,9 +204,6 @@ class Situation(
                 .asSequence()
         return statementIdIteratorFromSequence(axiomsFromRepo + statementsFromStorage + sharedStatements)
     }
-
-    fun getAll(): StatementIdIterator = find(UNBOUND, UNBOUND, UNBOUND, UNBOUND)
-
 
     private fun getPrettyStringFor(
         subject: Long,

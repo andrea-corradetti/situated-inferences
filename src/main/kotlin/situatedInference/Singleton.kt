@@ -1,5 +1,18 @@
 package situatedInference
 
-import org.eclipse.rdf4j.model.IRI
+data class Singleton(val reifiedStatementId: Long, val singletonQuad: Quad) : InMemoryContext {
+    override fun find(
+        subjectId: Long,
+        predicateId: Long,
+        objectId: Long,
+        contextId: Long,
+        status: Int
+    ): Sequence<Quad> {
+        return if (Triple(subjectId, predicateId, objectId) == singletonQuad.asTriple())
+            sequenceOf(singletonQuad)
+        else
+            emptySequence()
+    }
 
-data class Singleton(val reifiedStatementId: Long, val singletonQuad: Quad)
+    override fun getAll(): Sequence<Quad> = sequenceOf(singletonQuad)
+}

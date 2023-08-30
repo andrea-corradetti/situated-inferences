@@ -26,24 +26,6 @@ class SituateTask(private val requestContext: SituatedInferenceContext) {
         return schema?.contextsToSituate == createdSituationsIds
     }
 
-    fun findInBoundSituations(
-        subjectId: Long,
-        predicateId: Long,
-        objectId: Long,
-        contextId: Long? = null
-    ): StatementIdIterator {
-        if (!situationsAreCreated()) {
-            createSituations()
-        }
-        val statements = createdSituationsIds.asSequence().map {
-            requestContext.situations[it]?.apply { refresh() }?.find(subjectId, predicateId, objectId, contextId)
-                ?.asSequence()  //TODO consider changing with contextId
-                ?: emptySequence()
-        }.flatten()
-
-        return statementIdIteratorFromSequence(statements)
-    }
-
 
     fun createSituationOfContext(contextId: Long): Situation {
         val schema = this.schema ?: throw PluginException("You are trying to situate a schema that you haven't bound")

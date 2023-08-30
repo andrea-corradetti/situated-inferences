@@ -145,12 +145,3 @@ class ExplainTask(
 }
 
 
-fun QueryResultIterator.asSequence() = sequence<StatementIdIterator> {
-    while (this@asSequence.hasNext()) {
-        if (this@asSequence !is StatementSource) {
-            continue
-        }
-        this@asSequence.solution().forEach { yield(it) }
-    }
-    this@asSequence.close()
-}

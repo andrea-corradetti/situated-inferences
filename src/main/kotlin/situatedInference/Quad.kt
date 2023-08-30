@@ -26,6 +26,8 @@ data class Quad(
         iterator.status
     )
 
+    fun asList() =  listOf(subject, predicate, `object`, context, status)
+
     fun isExplicit(): Boolean = status and EXPLICIT_STATEMENT_STATUS != 0
 
     fun isAxiom(): Boolean = status and AXIOM_STATEMENT_STATUS != 0

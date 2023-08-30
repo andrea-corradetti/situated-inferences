@@ -12,10 +12,11 @@ class SituatedInferenceContext(
     val logger: Logger? = null,
 ) : RequestContext {
 
+
     var sharedScope by Delegates.notNull<Long>()
     val singletons = mutableMapOf<Long, Singleton>()
 
-    val inMemoryContexts = mutableMapOf<Long, InMemoryContext>()
+    val inMemoryContexts = mutableMapOf<Long, SimpleContext>()
 
     val situations = mutableMapOf<Long, Situation>()
 
