@@ -25,7 +25,7 @@ class SituateTask(private val requestContext: SituatedInferenceContext) {
     }
 
 
-    private fun createSituationOfContext(contextId: Long): Situation {
+    private fun createSituationOfContext(contextId: Long): SituatedContext {
         val schema = this.schema ?: throw PluginException("You are trying to situate a schema that you haven't bound")
         val name =
             schema.contextToNameForSituation[contextId] ?: (entities[contextId].stringValue() + suffixForNewNames)
@@ -34,14 +34,16 @@ class SituateTask(private val requestContext: SituatedInferenceContext) {
                 it.entities.put(iri(name), Entities.Scope.REQUEST)
             }
         } //TODO remove transaction
-        return Situation(newSituationId, schema.sharedContexts + contextId, requestContext)
+
+        val sourceId = (requestContext.inMemoryContexts[contextId] as? Quotable)?.sourceId ?: contextId
+        return SituatedContext(newSituationId, sourceId, schema.sharedContexts, requestContext)
     }
 
     fun createSituations() {
         (schema!!.contextsToSituate - createdSituationsIds).forEach { contextId ->
             val situation = createSituationOfContext(contextId)
-            requestContext.inMemoryContexts[situation.id] = situation
-            createdSituationsIds.add(situation.id)
+            requestContext.inMemoryContexts[situation.quotableId] = situation
+            createdSituationsIds.add(situation.quotableId)
         }
     }
 }

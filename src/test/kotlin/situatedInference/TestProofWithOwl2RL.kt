@@ -2401,6 +2401,130 @@ class TestProofWithOwl2RL {
         println(grouped)
         assert(result1.size == result2.size) //TODO write better checks
     }
+  @Test
+    fun `Singleton is quoted correctly after inference`() {
+        val addReifiedStatement = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+            
+            INSERT DATA {
+            
+                #######################################
+                #                                     #
+                #           SHARED KNOWLEDGE          #
+                #                                     #
+                #######################################
+        
+                :Superman a t:Person.
+                :ClarkKent a t:Person.
+    
+                :LoisLane a t:Person.
+                :MarthaKent a t:Person.
+                :I a t:Person.
+                       
+                t:FictionalPerson rdfs:subClassOf t:Person.
+                t:RealPerson rdfs:subClassOf t:Person.
+                t:FictionalPerson owl:complementOf t:RealPerson.
+               
+                :fly a t:flyingPower.
+                :clingFromCeiling a t:spiderLikePower.
+    
+                t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+               
+                t:SuperHero rdfs:subClassOf t:Person;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:supernaturalPower.
+                t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:flyingPower.   
+                t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:spiderLikePower.
+                t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .    
+                    
+                #######################################
+                #                                     #
+                #           REIFICATION               #
+                #                                     #
+                #######################################
+    
+                :S rdf:type rdf:Statement .
+                :S rdf:subject :Superman .
+                :S rdf:predicate :can .
+                :S rdf:object :clingFromCeiling .
+                
+                :I :thinks :S.
+                :S :since "2023".
+                
+            }  
+        """.trimIndent()
+
+        val getStatementsQuotingReification = """
+                PREFIX conj: <https://w3id.org/conjectures/>
+                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                
+                PREFIX : <http://a#>
+                
+                select distinct ?subject ?predicate ?object where {
+                    :S conj:asSingleton conj:singleton.
+                    
+                    bind (:S as ?subject)
+                    ?subject ?predicate ?object
+                }
+        """.trimIndent()
+
+        val getStatementQuotingSingleton = """
+                PREFIX conj: <https://w3id.org/conjectures/>
+                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                
+                PREFIX : <http://a#>
+                
+                select distinct ?subject ?predicate ?object where {
+                    :S conj:asSingleton conj:singleton.
+                    
+                    graph conj:schemas\/s1 {
+                        rdf4j:nil a conj:SharedKnowledgeContext.
+                        conj:singleton a conj:SituatedContext.
+                    }
+                    
+                    ?situation conj:situateSchema conj:schemas\/s1.
+                    
+                    ?situation conj:hasSituatedContext ?g
+                    
+                    bind (?g as ?subject).
+                    ?subject ?predicate ?object.
+                }
+        """.trimIndent()
+
+        val (result1, result2) = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addReifiedStatement).execute()
+                listOf(
+                    it.prepareTupleQuery(getStatementsQuotingReification).evaluate().map(BindingSet::toStringValueMap)
+                        .toSet(),
+                    it.prepareTupleQuery(getStatementQuotingSingleton).evaluate().map(BindingSet::toStringValueMap)
+                        .toSet(),
+                )
+            }
+        }
+        println("result1 set ${result1.size} $result1")
+        println("result2 set ${result2.size} $result2")
+        assert(result1.isNotEmpty())
+        assert(result2.isNotEmpty())
+
+        val grouped = (result1 + result2).groupBy { it["predicate"] to it["object"] }.mapValues { (pair, list) ->
+            list.map { it["subject"] }
+        }
+        println(grouped)
+        assert(result1.size == result2.size) //TODO write better checks
+    }
 
     companion object {
         @JvmField

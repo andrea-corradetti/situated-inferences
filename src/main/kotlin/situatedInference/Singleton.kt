@@ -5,8 +5,9 @@ import com.ontotext.trree.sdk.Entities.UNBOUND
 data class Singleton(
     val reifiedStatementId: Long,
     val singletonQuad: Quad,
-    override val requestContext: SituatedInferenceContext
+    private val requestContext: SituatedInferenceContext
 ) : InMemoryContext, Quotable {
+
     override fun find(
         subjectId: Long,
         predicateId: Long,
@@ -19,8 +20,6 @@ data class Singleton(
                     (predicateId == UNBOUND || predicateId == singletonQuad.predicate) &&
                     (objectId == UNBOUND || objectId == singletonQuad.`object`) &&
                     (contextId == UNBOUND || contextId == singletonQuad.context)
-
-
         return if (matches) sequenceOf(singletonQuad) else emptySequence()
     }
 
@@ -31,5 +30,22 @@ data class Singleton(
         get() = reifiedStatementId
     override val quotableId: Long
         get() = singletonQuad.context
+
+
+    override fun getQuotingAsSubject(): SimpleContext {
+        val statementInSubject =
+            requestContext.repositoryConnection.getStatements(sourceId, 0, 0, 0).asSequence().map {
+                it.replaceValues(sourceId, quotableId)
+            }
+        return SimpleContext.fromSequence(statementInSubject)
+    }
+
+    override fun getQuotingAsObject(): SimpleContext {
+        val statementInObject =
+            requestContext.repositoryConnection.getStatements(0, 0, sourceId, 0).asSequence().map {
+                it.replaceValues(sourceId, quotableId)
+            }
+        return SimpleContext.fromSequence(statementInObject)
+    }
 
 }

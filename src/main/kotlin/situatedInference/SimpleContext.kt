@@ -23,7 +23,7 @@ interface InMemoryContext {
 }
 
 
-abstract class ContextWithStorage() : InMemoryContext {
+open class ContextWithStorage() : InMemoryContext {
     val storage: Storage = MemoryStorage()
 
     fun deleteAll() {
