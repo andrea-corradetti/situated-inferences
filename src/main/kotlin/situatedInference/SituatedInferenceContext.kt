@@ -12,10 +12,7 @@ class SituatedInferenceContext(
     val logger: Logger? = null,
 ) : RequestContext {
 
-    val quotingInSubject = mutableMapOf<Long, SimpleContext>()
-    val quotingInObject = mutableMapOf<Long, SimpleContext>()
-
-    var sharedScope by Delegates.notNull<Long>()
+    var sharedScope by Delegates.notNull<Long>() //TODO remove
 
     val statementIdToSingletonId = mutableMapOf<Long, Long>()
 

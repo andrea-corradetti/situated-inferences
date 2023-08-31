@@ -1,8 +1,6 @@
 package situatedInference
 
 import com.ontotext.trree.AbstractRepositoryConnection
-import com.ontotext.trree.StatementIdIterator
-import com.ontotext.trree.entitypool.EntityPool
 import com.ontotext.trree.entitypool.EntityPoolConnection
 import com.ontotext.trree.entitypool.PluginEntitiesAdapter
 import com.ontotext.trree.sdk.Entities
@@ -27,21 +25,16 @@ class SituateTask(private val requestContext: SituatedInferenceContext) {
     }
 
 
-    fun createSituationOfContext(contextId: Long): Situation {
+    private fun createSituationOfContext(contextId: Long): Situation {
         val schema = this.schema ?: throw PluginException("You are trying to situate a schema that you haven't bound")
         val name =
             schema.contextToNameForSituation[contextId] ?: (entities[contextId].stringValue() + suffixForNewNames)
-        val newSituationId = requestContext.repositoryConnection.transaction {
-            it.entityPoolConnection.transaction {
+        val newSituationId = requestContext.repositoryConnection.transaction { repositoryConnection ->
+            repositoryConnection.entityPoolConnection.transaction {
                 it.entities.put(iri(name), Entities.Scope.REQUEST)
             }
-
-        }
-
-
-
-
-        return Situation(requestContext, newSituationId, schema.sharedContexts + contextId)
+        } //TODO remove transaction
+        return Situation(newSituationId, schema.sharedContexts + contextId, requestContext)
     }
 
     fun createSituations() {

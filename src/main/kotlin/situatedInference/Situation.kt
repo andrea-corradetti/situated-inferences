@@ -5,7 +5,6 @@ import com.ontotext.trree.AbstractInferencerTask
 import com.ontotext.trree.StatementIdIterator
 import com.ontotext.trree.StatementIdIterator.*
 import com.ontotext.trree.SwitchableInferencer
-import com.ontotext.trree.plugin.provenance.Storage
 import com.ontotext.trree.sdk.Entities.Type.LITERAL
 import com.ontotext.trree.sdk.Entities.Type.URI
 import com.ontotext.trree.sdk.Entities.UNBOUND
@@ -14,15 +13,19 @@ import org.slf4j.LoggerFactory
 
 
 class Situation(
-    private val requestContext: SituatedInferenceContext,
     val id: Long,
     private val boundContexts: Set<Long>,
+    private val requestContext: SituatedInferenceContext,
 ) : ContextWithStorage(), AbstractInferencerTask {
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private val inferencer = requestContext.inferencer
     private val repositoryConnection = requestContext.repositoryConnection
 
     private var isUpdated = false
+
+    var baseContext: Long? = null
+        private set
+
 
     fun refreshAndFind(subjectId: Long, predicateId: Long, objectId: Long, contextId: Long = 0): Sequence<Quad> {
         if (!isUpdated) {
@@ -82,9 +85,7 @@ class Situation(
     //FIXME same triples with different contexts are duplicated in storage (this might be good for inconsistencies)
     private fun inferClosureAndAddToStorage(subject: Long, predicate: Long, `object`: Long, context: Long) {
         val storageIterator = storage.bottom()
-        storage.add(
-            subject, predicate, `object`, context, EXPLICIT_STATEMENT_STATUS
-        ) //TODO possibly should be implicit status
+        storage.add(subject, predicate, `object`, context, EXPLICIT_STATEMENT_STATUS)
         logger.debug("forward chaining added ${getPrettyStringFor(subject, predicate, `object`)}")
 
         if (!requestContext.isInferenceEnabled) {
@@ -140,9 +141,7 @@ class Situation(
 
         if (statementIsAxiom(subject, predicate, `object`)) {
             logger.debug(
-                "Rule fired but statement already existing as axiom ${
-                    getPrettyStringFor(subject, predicate, `object`)
-                }"
+                "Rule fired but statement already existing as axiom ${getPrettyStringFor(subject, predicate, `object`)}"
             )
             return
         }
@@ -155,10 +154,6 @@ class Situation(
         )
     }
 
-    fun getBottomIterator(): StatementIdIterator {
-        return storage.bottom()
-    }
-
     private fun statementIsAxiom(subject: Long, predicate: Long, `object`: Long): Boolean {
         repositoryConnection.getStatements(
             subject,
@@ -169,9 +164,6 @@ class Situation(
             return iter.asSequence().any { it.isAxiom() }
         }
     }
-
-    private fun Storage.contains(subject: Long, predicate: Long, `object`: Long, context: Long): Boolean =
-        this.find(subject, predicate, `object`, context).asSequence().any()
 
     override fun getRepStatements(
         subject: Long,
@@ -243,29 +235,6 @@ class Situation(
     ) {
         throw PluginException("Not implemented for Situated-Inferences Plugin")
     }
+
 }
 
-fun statementIdIteratorFromSequence(statements: Sequence<Quad>) = object : StatementIdIterator() {
-    val iterator = statements.iterator()
-
-    init {
-        next()
-    }
-
-    override fun next() {
-        if (iterator.hasNext()) {
-            val quad = iterator.next()
-            subj = quad.subject
-            pred = quad.predicate
-            obj = quad.`object`
-            context = quad.context
-            status = quad.status
-            found = true
-        } else {
-            found = false
-        }
-    }
-
-    override fun close() {}
-    override fun changeStatus(p0: Int) {}
-}

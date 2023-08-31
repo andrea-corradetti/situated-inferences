@@ -73,3 +73,28 @@ fun StatementIdIterator.toStatementIterator(): StatementIterator {
 }
 
 fun Sequence<Quad>.toStatementIterator(): StatementIterator = statementIteratorFromSequence(this)
+
+fun statementIdIteratorFromSequence(statements: Sequence<Quad>) = object : StatementIdIterator() {
+    val iterator = statements.iterator()
+
+    init {
+        next()
+    }
+
+    override fun next() {
+        if (iterator.hasNext()) {
+            val quad = iterator.next()
+            subj = quad.subject
+            pred = quad.predicate
+            obj = quad.`object`
+            context = quad.context
+            status = quad.status
+            found = true
+        } else {
+            found = false
+        }
+    }
+
+    override fun close() {}
+    override fun changeStatus(p0: Int) {}
+}
