@@ -13,35 +13,13 @@ class SituatedContext(
     private val sourceContextId: Long,
     private val additionalContexts: Set<Long> = emptySet(),
     private val requestContext: SituatedInferenceContext
-) : ContextWithStorage(), Quotable, AbstractInferencerTask {
+) : ContextWithStorage(),
+    Quotable by QuotableImpl(sourceContextId, situatedContextId, requestContext),
+    AbstractInferencerTask {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private val inferencer = requestContext.inferencer
     private val repositoryConnection = requestContext.repositoryConnection
-
-    override val sourceId: Long
-        get() = sourceContextId
-
-    override val quotableId: Long
-        get() = situatedContextId
-
-    override fun getQuotingAsSubject(): SimpleContext {
-        val statementInSubject =
-            requestContext.repositoryConnection.getStatements(sourceId, 0, 0, 0).asSequence().map {
-                it.replaceValues(sourceId, quotableId)
-            }
-        return SimpleContext.fromSequence(statementInSubject)
-    }
-
-    override fun getQuotingAsObject(): SimpleContext {
-        val statementInObject =
-            requestContext.repositoryConnection.getStatements(0, 0, sourceId, 0).asSequence().map {
-                it.replaceValues(sourceId, quotableId)
-            }
-        return SimpleContext.fromSequence(statementInObject)
-    }
-
-
 
     fun refresh() {
         storage.clear()

@@ -202,6 +202,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         requestContext.situateTasks.values.forEach { it.createSituations() } //TODO rewrite so this is unnecessary
         requestContext.inMemoryContexts.values.filterIsInstance<Situation>().forEach { it.refresh() }
+        requestContext.inMemoryContexts.values.filterIsInstance<SituatedContext>().forEach { it.refresh() }
 
         logger.debug(
             "sequence count {}",
