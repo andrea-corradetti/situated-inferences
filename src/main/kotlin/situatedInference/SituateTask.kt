@@ -4,46 +4,65 @@ import com.ontotext.trree.AbstractRepositoryConnection
 import com.ontotext.trree.entitypool.EntityPoolConnection
 import com.ontotext.trree.entitypool.PluginEntitiesAdapter
 import com.ontotext.trree.sdk.Entities
+import com.ontotext.trree.sdk.Entities.Scope.REQUEST
 import com.ontotext.trree.sdk.PluginException
 import org.eclipse.rdf4j.model.util.Values.iri
-import kotlin.properties.Delegates
 
 
-class SituateTask(private val requestContext: SituatedInferenceContext) {
+class SituateTask(val taskId: Long, private val requestContext: SituatedInferenceContext) {
 
     private val entities: PluginEntitiesAdapter = requestContext.repositoryConnection.entityPoolConnection.entities
 
-    var schemaId by Delegates.notNull<Long>()
-    var schema: SchemaForSituate? = null
+    var schemaId: Long? = null
+    val schema
+        get() = schemaId?.let { requestContext.schemas[schemaId] }
 
-    var suffixForNewNames: String = "-situated"
+//    var suffixForNewNames: String = "-situated"
 
+    var alreadySituated = mutableSetOf<Long>()
     var createdSituationsIds = mutableSetOf<Long>()
 
     private fun situationsAreCreated(): Boolean {
-        return schema?.contextsToSituate == createdSituationsIds
+        return schema?.contextsToSituate == alreadySituated
     }
 
 
     private fun createSituationOfContext(contextId: Long): SituatedContext {
         val schema = this.schema ?: throw PluginException("You are trying to situate a schema that you haven't bound")
         val name =
-            schema.contextToNameForSituation[contextId] ?: (entities[contextId].stringValue() + suffixForNewNames)
-        val newSituationId = requestContext.repositoryConnection.transaction { repositoryConnection ->
-            repositoryConnection.entityPoolConnection.transaction {
-                it.entities.put(iri(name), Entities.Scope.REQUEST)
-            }
-        } //TODO remove transaction
+            schema.contextToNameForSituation[contextId] ?: (entities[contextId].stringValue() + schema.suffix)
+        val newSituationId =
+            requestContext.repositoryConnection.entityPoolConnection.entities.put(iri(name), REQUEST)
+
 
         val sourceId = (requestContext.inMemoryContexts[contextId] as? Quotable)?.sourceId ?: contextId
-        return SituatedContext(newSituationId, sourceId, schema.sharedContexts, requestContext)
+        return SituatedContext(newSituationId, sourceId, schema.sharedContexts, requestContext).apply { refresh() }
     }
 
     fun createSituations() {
-        (schema!!.contextsToSituate - createdSituationsIds).forEach { contextId ->
+        (schema!!.contextsToSituate - alreadySituated).forEach { contextId ->
             val situation = createSituationOfContext(contextId)
             requestContext.inMemoryContexts[situation.quotableId] = situation
             createdSituationsIds.add(situation.quotableId)
+            alreadySituated.add(contextId)
+        }
+    }
+
+    fun createSituationsIfReady() {
+        if (schema != null) {
+            createSituations()
+        }
+    }
+
+    fun renameSituatedContexts() {
+        createdSituationsIds.toList().forEach { situationId ->
+            val situation = requestContext.inMemoryContexts[situationId] as? SituatedContext ?: return
+            val baseName = entities.get(situation.sourceId).stringValue()
+            val newId = entities.put(iri(baseName+ schema!!.suffix ), REQUEST)
+            requestContext.inMemoryContexts.remove(situationId)
+            createdSituationsIds.remove(situationId)
+            createdSituationsIds.add(newId)
+            requestContext.inMemoryContexts[newId] = situation.apply { situatedContextId = newId }
         }
     }
 }

@@ -86,7 +86,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         }
 
         if (predicateId == situateSchemaId) {
-            return 10.0
+            return 20.0
         }
 
         if (predicateId == appendToContextsId) {
@@ -94,7 +94,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         }
 
         if (pluginConnection.entities.get(contextId)?.stringValue()?.startsWith(schemasNamespace) == true) {
-            return 20.0
+            return 10.0
         }
 
         if (predicateId == hasSituatedContextId) {
@@ -116,6 +116,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         pluginConnection: PluginConnection,
         requestContext: RequestContext?
     ): StatementIterator? {
+
         if (requestContext !is SituatedInferenceContext) {
             return null
         }
@@ -161,14 +162,15 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         if (predicateId == reifiesGraphId) {
             val graphToReify = if (objectId != UNBOUND) objectId else return StatementIterator.EMPTY
-            val reifiedGraphId =
+            val reificationId =
                 if (subjectId != UNBOUND) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
             val statementsToReify = requestContext.inMemoryContexts[graphToReify]?.getAll()
                 ?: pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, graphToReify).asSequence()
             val reifiedStatements = statementsToReify.map { pluginConnection.getReification(it) }.flatten()
-            requestContext.inMemoryContexts[reifiedGraphId] = SimpleContext.fromSequence(reifiedStatements)
+            requestContext.inMemoryContexts[reificationId] =
+                ReifiedContext.fromSequence(reifiedStatements, graphToReify, reificationId, requestContext)
 
-            return StatementIterator.create(reifiedGraphId, predicateId, graphToReify, contextId)
+            return StatementIterator.create(reificationId, predicateId, graphToReify, contextId)
         }
 
 
@@ -180,35 +182,20 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             return handleSituateSchema(subjectId, pluginConnection, requestContext, objectId, contextId)
         }
 
-        if (predicateId == appendToContextsId) {
-            return handleAppendToContexts(subjectId, predicateId, objectId, contextId, requestContext, pluginConnection)
-        }
-
         if (pluginConnection.entities[contextId]?.stringValue()?.startsWith(namespace + "schemas") == true) {
             return handleSchemaStatement(subjectId, predicateId, objectId, contextId, requestContext)
         }
 
         if (predicateId == hasSituatedContextId) {
             val taskId = if (subjectId.isBound()) subjectId else return StatementIterator.EMPTY
-            val task = requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
+            val task = requestContext.situateTasks.getOrPut(taskId) { SituateTask(taskId, requestContext) }
 
-            task.createSituations()
+            task.createSituationsIfReady()
 
-            return statementIteratorFromSequence(
-                task.createdSituationsIds.asSequence().map { Quad(taskId, hasSituatedContextId, it, contextId) }
-            )
+            return if (task.createdSituationsIds.isNotEmpty())
+                statementIteratorFromSequence(task.createdSituationsIds.asSequence().map { Quad(taskId, hasSituatedContextId, it, contextId) })
+            else StatementIterator.EMPTY
         }
-
-
-        requestContext.situateTasks.values.forEach { it.createSituations() } //TODO rewrite so this is unnecessary
-        requestContext.inMemoryContexts.values.filterIsInstance<Situation>().forEach { it.refresh() }
-        requestContext.inMemoryContexts.values.filterIsInstance<SituatedContext>().forEach { it.refresh() }
-
-        logger.debug(
-            "sequence count {}",
-            requestContext.inMemoryContexts[contextId]?.find(subjectId, predicateId, objectId)
-                ?.onEach { logger.debug("QUAD {}", it) }?.count()
-        )
 
 
         val statements = if (contextId == UNBOUND)
@@ -269,25 +256,20 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     }
 
 
-    private fun handleAppendToContexts(
-        subjectId: Long,
-        predicateId: Long,
-        objectId: Long,
-        contextId: Long,
-        requestContext: SituatedInferenceContext,
-        pluginConnection: PluginConnection
-    ): StatementIterator? {
-        val taskId = if (subjectId.isBound()) subjectId else return StatementIterator.create(
-            subjectId,
-            predicateId,
-            objectId,
-            contextId
-        )
-        requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
-            .apply { suffixForNewNames = pluginConnection.entities[objectId].stringValue() }
-
-        return StatementIterator.create(taskId, predicateId, objectId, contextId)
-    }
+//    private fun handleAppendToContexts(
+//        subjectId: Long,
+//        predicateId: Long,
+//        objectId: Long,
+//        contextId: Long,
+//        requestContext: SituatedInferenceContext,
+//        pluginConnection: PluginConnection
+//    ): StatementIterator? {
+//        val taskId = if (subjectId.isBound()) subjectId else return  StatementIterator.create(subjectId, predicateId, objectId, contextId)
+//        requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
+//            .apply { suffixForNewNames = pluginConnection.entities[objectId].stringValue() }
+//
+//        return StatementIterator.create(taskId, predicateId, objectId, contextId)
+//    }
 
     private fun handleSituateSchema(
         subjectId: Long,
@@ -297,14 +279,18 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         contextId: Long
     ): StatementIterator? {
         val taskId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
-        val task = requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
-
         val schemaId = if (objectId.isBound()) objectId else pluginConnection.entities.put(bnode(), REQUEST)
-        val schema = requestContext.schemas.getOrPut(objectId) { SchemaForSituate(requestContext) }
+        val task = requestContext.situateTasks.getOrPut(taskId) { SituateTask(taskId, requestContext) }
+            .apply { this.schemaId = schemaId }
+        val schema = requestContext.schemas.getOrPut(schemaId) { SchemaForSituate(requestContext) }
+            .apply { boundTasks.add(task) }
 
-        task.schema = schema
-        schema.boundTasks.add(task)
+        task.createSituationsIfReady()
 
+//        val sequence = sequenceOf(Quad(taskId, situateSchemaId, schemaId, contextId)) +
+//                task.createdSituationsIds.map { Quad(taskId, hasSituatedContextId, it, 0) }.asSequence()
+//
+//        return sequence.toStatementIterator()
         return StatementIterator.create(taskId, situateSchemaId, schemaId, contextId)
     }
 
@@ -317,6 +303,9 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     ): StatementIterator? {
         val schema = requestContext.schemas.getOrPut(contextId) { SchemaForSituate(requestContext) }
         val parsed = schema.parse(subjectId, predicateId, objectId)
+        val toReturn = schema.boundTasks.onEach { it.createSituationsIfReady() }
+            .map { Quad(it.taskId, situateSchemaId, contextId, 0) }
+//        if (toReturn.isNotEmpty()) return toReturn.asSequence().toStatementIterator()
         return if (parsed) StatementIterator.create(subjectId, predicateId, objectId, contextId) else null
     }
 
@@ -398,7 +387,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         requestContext.inMemoryContexts[situationId] = Situation(
             situationId, objectsIds.toSet(), requestContext
-        )
+        ).apply { refresh() }
 
         return StatementIterator.create(
             objectsIds.map { longArrayOf(situationId, situateId, it, 0L) }.toTypedArray()

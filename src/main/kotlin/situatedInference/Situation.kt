@@ -102,8 +102,8 @@ class Situation(
                     it.subject,
                     it.predicate,
                     it.`object`,
-                    it.context,
-                    it.status
+                    0,
+                    0
                 )
                 if (inconsistencies.isNotBlank()) logger.debug("inconsistencies {}", inconsistencies)
             }
@@ -171,7 +171,7 @@ class Situation(
         `object`: Long,
         status: Int
     ): StatementIdIterator {
-        logger.debug("gettingRepStatements for ${getPrettyStringFor(subject, predicate, `object`)}")
+//        logger.debug("gettingRepStatements for ${getPrettyStringFor(subject, predicate, `object`)}")
         val axiomsFromRepo =
             repositoryConnection.getStatements(subject, predicate, `object`, status).asSequence()
                 .filter { it.isAxiom() }
@@ -185,7 +185,7 @@ class Situation(
     override fun getRepStatements(
         subject: Long, predicate: Long, `object`: Long, context: Long, status: Int
     ): StatementIdIterator {
-        logger.debug("gettingRepStatements for ${getPrettyStringFor(subject, predicate, `object`)}")
+//        logger.debug("gettingRepStatements for ${getPrettyStringFor(subject, predicate, `object`)}")
         val axiomsFromRepo =
             repositoryConnection.getStatements(subject, predicate, `object`, context, status).asSequence()
                 .filter { it.isAxiom() }

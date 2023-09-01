@@ -3,13 +3,19 @@ package situatedInference
 import com.ontotext.trree.entitypool.PluginEntitiesAdapter
 import com.ontotext.trree.sdk.Entities.UNBOUND
 import org.eclipse.rdf4j.model.vocabulary.RDF
+import kotlin.properties.Delegates
 
 class SchemaForSituate(private val requestContext: SituatedInferenceContext) {
     var contextsToSituate = mutableSetOf<Long>()
     var sharedContexts = mutableSetOf<Long>()
     val contextToNameForSituation = mutableMapOf<Long, String>()
-
     val boundTasks = mutableSetOf<SituateTask>()
+
+    var suffix by Delegates.observable("") { property, oldValue, newValue ->
+        if (oldValue != newValue) {
+            boundTasks.forEach { it.renameSituatedContexts() }
+        }
+    }
 
     private val entities: PluginEntitiesAdapter = requestContext.repositoryConnection.entityPoolConnection.entities
 
@@ -37,6 +43,10 @@ class SchemaForSituate(private val requestContext: SituatedInferenceContext) {
                     requestContext.repositoryConnection.contextIDs.asSequence().map { it.context }
                         .filter { entities[it]?.stringValue()?.matches(regex) == true }.toList()
                 contextsToSituate += contextsWithPrefix
+            }
+
+            subjectId != UNBOUND && predicateId == entities.resolve(RDF.TYPE) && objectId == appendToContextsId -> {
+                suffix = entities[subjectId]?.stringValue() ?: return false
             }
 
 

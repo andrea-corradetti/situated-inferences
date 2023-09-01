@@ -107,10 +107,9 @@ class TestProofWithOwl2RL {
         }
     }
 
-    @Ignore
     @Test
     fun `Inconsistencies are correctly identified`() {
-        val inconsistentData = """
+        val insertSchema = """
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
             PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
             PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -119,6 +118,7 @@ class TestProofWithOwl2RL {
             PREFIX t: <http://t#>
         
             INSERT DATA {
+            [] <http://www.ontotext.com/owlim/system#schemaTransaction> []
         
             #######################################
             #                                     #
@@ -136,25 +136,7 @@ class TestProofWithOwl2RL {
                     t:FictionalPerson rdfs:subClassOf t:Person.
                     t:RealPerson rdfs:subClassOf t:Person.
                     t:FictionalPerson owl:complementOf t:RealPerson.
-                   
-                    :fly a t:flyingPower.
-                    :clingFromCeiling a t:spiderLikePower.
-        
-                    t:flyingPower rdfs:subClassOf t:supernaturalPower.
-                    t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
-                   
-                    t:SuperHero rdfs:subClassOf t:Person;
-                                   owl:onProperty :can;
-                                   owl:someValuesFrom t:supernaturalPower.
-                    t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
-                                   owl:onProperty :can;
-                                   owl:someValuesFrom t:flyingPower.   
-                    t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
-                                   owl:onProperty :can;
-                                   owl:someValuesFrom t:spiderLikePower.
-                    t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .
-                   
-        
+                  
         
             #########################################
             #                                       #
@@ -163,25 +145,30 @@ class TestProofWithOwl2RL {
             #    This should NEVER be consistent    #
             #                                       #
             #########################################
+            }
+        """.trimIndent()
+
+        val insertInconsistentData = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
         
-                   :LoisLane :thinks :LoisLanesThoughts
+            INSERT DATA {
                    GRAPH :LoisLanesThoughts {
-                        :Superman :can :fly .
-                       :Superman owl:differentFrom :ClarkKent.
+                        :Superman owl:differentFrom :ClarkKent.
                         :Superman a t:RealPerson .
                     }
-        
-                   :MarthaKent :thinks :MarthaKentsThoughts
+
                    GRAPH :MarthaKentsThoughts {
-                        :Superman :can :fly .
                        :Superman owl:sameAs :ClarkKent.
                         :Superman a t:RealPerson .
                     }
-        
-                   :I :thinks :myThoughts
+
                    GRAPH :myThoughts {
-                        :Superman :can :clingFromCeiling .
-                       :Superman owl:sameAs :ClarkKent.
+                        :Superman owl:sameAs :ClarkKent.
                         :Superman a t:FictionalPerson .
                     }
             }
@@ -207,7 +194,8 @@ class TestProofWithOwl2RL {
 
         createCleanRepositoryWithDefaults().use { repo ->
             repo.connection.use {
-                it.prepareUpdate(inconsistentData).execute()
+                it.prepareUpdate(insertSchema).execute()
+                it.prepareUpdate(insertInconsistentData).execute()
                 val exception =
                     assertFailsWith(PluginConsistencyException::class, "PluginConsistencyException not thrown") {
                         it.prepareTupleQuery(situateInconsistentData).evaluate().map(BindingSet::toStringValueMap)
@@ -441,13 +429,13 @@ class TestProofWithOwl2RL {
             select ?s ?p ?o where {
             
                 conj:task conj:situateSchema conj:schemas\/thoughts.
-                conj:task conj:appendToContexts "-situated".
             
                 graph conj:schemas\/thoughts {
                     rdf4j:nil a conj:SharedKnowledgeContext.
                     :LoisLanesThoughts a conj:SituatedContext.
                     :MarthaKentsThoughts a conj:SituatedContext.
                     :myThoughts a conj:SituatedContext.
+                    "-situated" a conj:appendToContexts
                 }
             
                 graph :LoisLanesThoughts-situated {
@@ -543,21 +531,17 @@ class TestProofWithOwl2RL {
             
             select ?s ?p ?o ?g1 where {
             
-                conj:task conj:situateSchema conj:schemas\/thoughts.
-                conj:task conj:appendToContexts "-situated".
-            
-                graph conj:schemas\/thoughts {
-                    rdf4j:nil a conj:SharedKnowledgeContext.
-                    :LoisLanesThoughts a conj:SituatedContext.
-                    :MarthaKentsThoughts a conj:SituatedContext.
-                    :myThoughts a conj:SituatedContext.
-                }
-            
-                #conj:task conj:hasSituatedGraph ?sg.
+              ?task conj:situateSchema conj:schemas\/thoughts.
+                      
+              graph conj:schemas\/thoughts {
+                  rdf4j:nil a conj:SharedKnowledgeContext.
+                  :LoisLanesThoughts a conj:SituatedContext.
+                  :MarthaKentsThoughts a conj:SituatedContext.
+                  :myThoughts a conj:SituatedContext.
+                  "-situated" a conj:appendToContexts
+              }
                 
-                VALUES ?g1 { :LoisLanesThoughts-situated }
-            
-                # conj:spec conj:situatedWithSuffix "-situated".
+                bind (:LoisLanesThoughts-situated as ?g1).
             
                 graph ?g1 {
                     ?s ?p ?o .
@@ -590,7 +574,7 @@ class TestProofWithOwl2RL {
             PREFIX t: <http://t#>
         
             INSERT DATA {
-                #######################################
+             #######################################
             #                                     #
             #           SHARED KNOWLEDGE          #
             #                                     #
@@ -656,17 +640,15 @@ class TestProofWithOwl2RL {
                             
                 ?task conj:situateSchema conj:schemas\/thoughts.
            
-                ?task conj:appendToContexts "-situated".
-            
                 graph conj:schemas\/thoughts {
                     rdf4j:nil a conj:SharedKnowledgeContext.
                     :LoisLanesThoughts a conj:SituatedContext.
                     :MarthaKentsThoughts a conj:SituatedContext.
                     :myThoughts a conj:SituatedContext.
+                    "-situated" a conj:appendToContexts
                 }
                 
                 ?task conj:hasSituatedContext ?g1.
-                
                 
                 graph ?g1 {
                     ?s ?p ?o .
@@ -797,17 +779,18 @@ class TestProofWithOwl2RL {
             
             select ?s ?p ?o ?g1 where {
             
-                conj:task conj:situateSchema conj:schemas\/thoughts.
-                conj:task conj:appendToContexts "-situated".
+                ?task conj:situateSchema conj:schemas\/thoughts.
             
                 graph conj:schemas\/thoughts {
                     rdf4j:nil a conj:SharedKnowledgeContext.
                     :LoisLanesThoughts a conj:SituatedContext.
                     :MarthaKentsThoughts a conj:SituatedContext.
                     :myThoughts a conj:SituatedContext.
+                    "-situated" a conj:appendToContexts.
+
                 }
             
-                conj:task conj:hasSituatedContext ?g1.
+                ?task conj:hasSituatedContext ?g1.
             
                 graph ?g1 {
                     ?s ?p ?o .
@@ -823,11 +806,11 @@ class TestProofWithOwl2RL {
             select ?s ?p ?o ?g1 where {
             
                 conj:task conj:situateSchema conj:schemas\/thoughts.
-                conj:task conj:appendToContexts "-situated".
             
                 graph conj:schemas\/thoughts {
                     rdf4j:nil a conj:SharedKnowledgeContext.
-                    <http://a#> a conj:prefixToSituate
+                    <http://a#> a conj:prefixToSituate.
+                      "-situated" a conj:appendToContexts.
                 }
             
                 conj:task conj:hasSituatedContext ?g1.
@@ -872,9 +855,6 @@ class TestProofWithOwl2RL {
             PREFIX t: <http://t#>
         
             INSERT DATA {
-            
-            
-            
             #######################################
             #                                     #
             #           SHARED KNOWLEDGE          #
@@ -941,13 +921,14 @@ class TestProofWithOwl2RL {
             select ?s ?p ?o ?g1 where {
             
                 conj:task conj:situateSchema conj:schemas\/thoughts.
-                conj:task conj:appendToContexts "-situated".
             
                 graph conj:schemas\/thoughts {
                     rdf4j:nil a conj:SharedKnowledgeContext.
                     :LoisLanesThoughts a conj:SituatedContext.
                     :MarthaKentsThoughts a conj:SituatedContext.
                     :myThoughts a conj:SituatedContext.
+                      "-situated" a conj:appendToContexts.
+
                 }
             
                 conj:task conj:hasSituatedContext ?g1.
@@ -964,19 +945,16 @@ class TestProofWithOwl2RL {
             PREFIX : <http://a#>
             
             select ?s ?p ?o ?g1 where {
-            
-            
-            
                 conj:task conj:situateSchema conj:schemas\/thoughts.
-                conj:task conj:appendToContexts "-situated".
             
                 graph conj:schemas\/thoughts {
                     rdf4j:nil a conj:SharedKnowledgeContext.
-                    "(?i).*thoughts.*" a conj:regexToSituate
+                    "(?i).*thoughts.*" a conj:regexToSituate.
+                    "-situated" a conj:appendToContexts.
+
                 }
             
                 conj:task conj:hasSituatedContext ?g1.
-            
             
                 graph ?g1 {
                     ?s ?p ?o .
@@ -1007,7 +985,112 @@ class TestProofWithOwl2RL {
     }
 
     @Test
-    fun `Reordering statements produces same result `() {
+    fun `situate 2`() {
+        val addNamedGraphs = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+        
+            INSERT DATA {
+                #######################################
+            #                                     #
+            #           SHARED KNOWLEDGE          #
+            #                                     #
+            #######################################
+        
+                    :Superman a t:Person.
+                    :ClarkKent a t:Person.
+        
+                    :LoisLane a t:Person.
+                    :MarthaKent a t:Person.
+                    :I a t:Person.
+                           
+                    t:FictionalPerson rdfs:subClassOf t:Person.
+                    t:RealPerson rdfs:subClassOf t:Person.
+                    t:FictionalPerson owl:complementOf t:RealPerson.
+                   
+                    :fly a t:flyingPower.
+                    :clingFromCeiling a t:spiderLikePower.
+        
+                    t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                    t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+                   
+                    t:SuperHero rdfs:subClassOf t:Person;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:supernaturalPower.
+                    t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:flyingPower.   
+                    t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:spiderLikePower.
+                    t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .
+            
+            
+                :LoisLane :thinks :LoisLanesThoughts
+                GRAPH :LoisLanesThoughts {
+                    :Superman :can :fly .
+                    :Superman owl:differentFrom :ClarkKent.
+                    :Superman a t:RealPerson .
+                }
+                
+                :MarthaKent :thinks :MarthaKentsThoughts
+                GRAPH :MarthaKentsThoughts {
+                    :Superman :can :fly .
+                    :Superman owl:sameAs :ClarkKent.
+                    :Superman a t:RealPerson .
+                }
+                
+                :I :thinks :myThoughts
+                GRAPH :myThoughts {
+                    :Superman :can :clingFromCeiling .
+                    :Superman owl:sameAs :ClarkKent.
+                    :Superman a t:FictionalPerson .
+                }
+            }
+        """.trimIndent()
+
+        val situate2 = """
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+            PREFIX : <http://a#>
+            
+            select ?s ?p ?o ?g1 where {
+                graph conj:schemas\/thoughts {
+                    rdf4j:nil a conj:SharedKnowledgeContext.
+                    :LoisLanesThoughts a conj:SituatedContext.
+                    :MarthaKentsThoughts a conj:SituatedContext.
+                    :myThoughts a conj:SituatedContext.
+                    "-situated" a conj:appendToContexts.
+                }
+                
+                ?task conj:hasSituatedContext ?g1.
+                
+                ?task conj:situateSchema conj:schemas\/thoughts.
+                
+                graph ?g1 {
+                    ?s ?p ?o .
+                }  
+            }
+        """.trimIndent()
+
+        val result2 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addNamedGraphs).execute()
+                it.prepareTupleQuery(situate2).evaluate().map(BindingSet::toStringValueMap).toSet()
+            }
+        }
+
+        println("result2 ${result2.size} $result2")
+        assert(result2.size == 408)
+
+    }
+
+    @Test
+    fun `situate 3`() {
         val addNamedGraphs = """
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
             PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -1082,19 +1165,123 @@ class TestProofWithOwl2RL {
             
             select ?s ?p ?o ?g1 where {
                             
-                ?task conj:situateSchema conj:schemas\/thoughts.
-           
-                ?task conj:appendToContexts "-situated".
+               graph ?g1 {
+                   ?s ?p ?o .
+               }  
             
                 graph conj:schemas\/thoughts {
                     rdf4j:nil a conj:SharedKnowledgeContext.
                     :LoisLanesThoughts a conj:SituatedContext.
                     :MarthaKentsThoughts a conj:SituatedContext.
                     :myThoughts a conj:SituatedContext.
+                    "-situated" a conj:appendToContexts.
                 }
                 
                 ?task conj:hasSituatedContext ?g1.
                 
+                ?task conj:situateSchema conj:schemas\/thoughts.
+           }
+        """.trimIndent()
+
+        val result3 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addNamedGraphs).execute()
+                it.prepareTupleQuery(situate3).evaluate().map(BindingSet::toStringValueMap).toSet()
+            }
+        }
+
+        println("result3 ${result3.size} $result3")
+        assert(result3.size == 408)
+
+    }
+
+    @Test
+    fun `Reordering statements produces same result `() {
+        val addNamedGraphs = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+        
+            INSERT DATA {
+                #######################################
+            #                                     #
+            #           SHARED KNOWLEDGE          #
+            #                                     #
+            #######################################
+        
+                    :Superman a t:Person.
+                    :ClarkKent a t:Person.
+        
+                    :LoisLane a t:Person.
+                    :MarthaKent a t:Person.
+                    :I a t:Person.
+                           
+                    t:FictionalPerson rdfs:subClassOf t:Person.
+                    t:RealPerson rdfs:subClassOf t:Person.
+                    t:FictionalPerson owl:complementOf t:RealPerson.
+                   
+                    :fly a t:flyingPower.
+                    :clingFromCeiling a t:spiderLikePower.
+        
+                    t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                    t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+                   
+                    t:SuperHero rdfs:subClassOf t:Person;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:supernaturalPower.
+                    t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:flyingPower.   
+                    t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                                   owl:onProperty :can;
+                                   owl:someValuesFrom t:spiderLikePower.
+                    t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .
+            
+            
+                :LoisLane :thinks :LoisLanesThoughts
+                GRAPH :LoisLanesThoughts {
+                    :Superman :can :fly .
+                    :Superman owl:differentFrom :ClarkKent.
+                    :Superman a t:RealPerson .
+                }
+                
+                :MarthaKent :thinks :MarthaKentsThoughts
+                GRAPH :MarthaKentsThoughts {
+                    :Superman :can :fly .
+                    :Superman owl:sameAs :ClarkKent.
+                    :Superman a t:RealPerson .
+                }
+                
+                :I :thinks :myThoughts
+                GRAPH :myThoughts {
+                    :Superman :can :clingFromCeiling .
+                    :Superman owl:sameAs :ClarkKent.
+                    :Superman a t:FictionalPerson .
+                }
+            }
+        """.trimIndent()
+
+        val situate1 = """
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+            PREFIX : <http://a#>
+            
+            select ?s ?p ?o ?g1 where {
+                            
+                ?task conj:situateSchema conj:schemas\/thoughts.
+            
+                graph conj:schemas\/thoughts {
+                    rdf4j:nil a conj:SharedKnowledgeContext.
+                    :LoisLanesThoughts a conj:SituatedContext.
+                    :MarthaKentsThoughts a conj:SituatedContext.
+                    :myThoughts a conj:SituatedContext.
+                    "-situated" a conj:appendToContexts
+                }
+                
+                ?task conj:hasSituatedContext ?g1.
                 
                 graph ?g1 {
                     ?s ?p ?o .
@@ -1113,10 +1300,8 @@ class TestProofWithOwl2RL {
                     :LoisLanesThoughts a conj:SituatedContext.
                     :MarthaKentsThoughts a conj:SituatedContext.
                     :myThoughts a conj:SituatedContext.
+                    "-situated" a conj:appendToContexts.
                 }
-                
-                ?task conj:appendToContexts "-situated".
-                
                 
                 ?task conj:hasSituatedContext ?g1.
                 
@@ -1127,7 +1312,7 @@ class TestProofWithOwl2RL {
                 }  
             }
         """.trimIndent()
-        val situate1 = """
+        val situate3 = """
             PREFIX conj: <https://w3id.org/conjectures/>
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
@@ -1143,16 +1328,11 @@ class TestProofWithOwl2RL {
                     :LoisLanesThoughts a conj:SituatedContext.
                     :MarthaKentsThoughts a conj:SituatedContext.
                     :myThoughts a conj:SituatedContext.
+                    "-situated" a conj:appendToContexts
                 }
                 
-                ?task conj:appendToContexts "-situated".
-                
-                
-                ?task conj:hasSituatedContext ?g1.
-                
-                ?task conj:situateSchema conj:schemas\/thoughts.
-                
-
+                ?task conj:hasSituatedContext ?g1.             
+                ?task conj:situateSchema conj:schemas\/thoughts.            
             }
         """.trimIndent()
 
@@ -1170,9 +1350,9 @@ class TestProofWithOwl2RL {
         println("result2 ${result2.size} $result2")
         println("result3 ${result3.size} $result3")
 
-        assert(result1.isNotEmpty())
-        assert(result2.isNotEmpty())
-        assert(result3.isNotEmpty())
+        assert(result1.size == 408)
+        assert(result2.size == 408)
+        assert(result3.size == 408)
 
         assert(result1 == result2)
         assert(result2 == result3)
@@ -1256,13 +1436,13 @@ class TestProofWithOwl2RL {
             select ?s ?p ?o ?g1 where {
                 ?task conj:hasSituatedContext ?g1.
                 ?task conj:situateSchema conj:schemas\/thoughts.
-                ?task conj:appendToContexts "-situated".
                 
                 graph conj:schemas\/thoughts {
                     rdf4j:nil a conj:SharedKnowledgeContext.
                     :LoisLanesThoughts a conj:SituatedContext.
                     :MarthaKentsThoughts a conj:SituatedContext.
                     :myThoughts a conj:SituatedContext.
+                    "-situated" a conj:appendToContexts
                 }
 
                graph ?g1 {
@@ -2194,7 +2374,7 @@ class TestProofWithOwl2RL {
 
 
     @Test
-    fun `Situating statements are replicated after inferring`() {
+    fun `Quoting a reified graph produces quoting of reified statements`() {
         val addReifiedStatement = """
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
             PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -2263,16 +2443,27 @@ class TestProofWithOwl2RL {
                 
                 PREFIX : <http://a#>
                 
-                select distinct ?subject ?predicate ?object where {
+                select distinct ?rs ?predicate ?object where {
                     :S conj:asSingleton conj:singleton.
-                    ?situation conj:situate (conj:singleton rdf4j:nil).
-                    ?reifiedGraph conj:reifiesGraph ?situation
-                   
-                    :S ?p ?o
+                    
+                    ?task conj:situateSchema conj:schemas\/s1.
+                    
+                    graph conj:schemas\/s1 {
+                        conj:singleton a conj:SituatedContext.
+                        rdf4j:nil a conj:SharedKnowledgeContext.
+                        "-situated" a conj:
+                    }
+                    
+                    ?task conj:hasSituatedContext ?g.
+                    
+                    ?reifiedGraph conj:reifiesGraph ?g.
                     
                     graph ?reifiedGraph {
-                        ?subject ?predicate ?object.
+                        ?rs ?rp ?ro.
                     } 
+                    
+                    ?rs ?predicate ?object.
+                    
                 }
         """.trimIndent()
 
@@ -2401,7 +2592,8 @@ class TestProofWithOwl2RL {
         println(grouped)
         assert(result1.size == result2.size) //TODO write better checks
     }
-  @Test
+
+    @Test
     fun `Singleton is quoted correctly after inference`() {
         val addReifiedStatement = """
             PREFIX owl: <http://www.w3.org/2002/07/owl#>

@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory
 
 
 class SituatedContext(
-    private val situatedContextId: Long,
+    var situatedContextId: Long,
     private val sourceContextId: Long,
     private val additionalContexts: Set<Long> = emptySet(),
     private val requestContext: SituatedInferenceContext
@@ -20,6 +20,7 @@ class SituatedContext(
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private val inferencer = requestContext.inferencer
     private val repositoryConnection = requestContext.repositoryConnection
+
 
     fun refresh() {
         storage.clear()
@@ -54,7 +55,7 @@ class SituatedContext(
 
         storageIterator.asSequence().forEach {
             if (inferencer.hasConsistencyRules()) {
-                logger.debug("ruleset has consistency rules")
+                //logger.debug("ruleset has consistency rules")
                 val currentInferencer = (inferencer as SwitchableInferencer).currentInferencer
                 val inconsistencies = currentInferencer.checkForInconsistencies(
                     repositoryConnection.entityPoolConnection,
@@ -66,7 +67,7 @@ class SituatedContext(
                 )
                 if (inconsistencies.isNotBlank()) logger.debug("inconsistencies {}", inconsistencies)
             }
-            logger.debug("Running inference with {}", getPrettyStringFor(it.subject, it.predicate, it.`object`))
+            //logger.debug("Running inference with {}", getPrettyStringFor(it.subject, it.predicate, it.`object`))
 
             inferencer.doInference(
                 it.subject,
@@ -106,11 +107,11 @@ class SituatedContext(
         }
 
         storage.add(subject, predicate, `object`, context, status)
-        logger.debug(
-            "Rule fired and adding inferred statement ${
-                getPrettyStringFor(subject, predicate, `object`)
-            }" + " Total size ${storage.size()}"
-        )
+//        logger.debug(
+//            "Rule fired and adding inferred statement ${
+//                getPrettyStringFor(subject, predicate, `object`)
+//            }" + " Total size ${storage.size()}"
+//        )
     }
 
     private fun statementIsAxiom(subject: Long, predicate: Long, `object`: Long): Boolean {
@@ -130,7 +131,7 @@ class SituatedContext(
         `object`: Long,
         status: Int
     ): StatementIdIterator {
-        logger.debug("gettingRepStatements for ${getPrettyStringFor(subject, predicate, `object`)}")
+//        logger.debug("gettingRepStatements for ${getPrettyStringFor(subject, predicate, `object`)}")
         val axiomsFromRepo =
             repositoryConnection.getStatements(subject, predicate, `object`, status).asSequence()
                 .filter { it.isAxiom() }
@@ -144,7 +145,7 @@ class SituatedContext(
     override fun getRepStatements(
         subject: Long, predicate: Long, `object`: Long, context: Long, status: Int
     ): StatementIdIterator {
-        logger.debug("gettingRepStatements for ${getPrettyStringFor(subject, predicate, `object`)}")
+//        logger.debug("gettingRepStatements for ${getPrettyStringFor(subject, predicate, `object`)}")
         val axiomsFromRepo =
             repositoryConnection.getStatements(subject, predicate, `object`, context, status).asSequence()
                 .filter { it.isAxiom() }

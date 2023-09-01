@@ -56,16 +56,15 @@ open class ContextWithStorage() : InMemoryContext {
     override fun getAll(): Sequence<Quad> {
         return find(0, 0, 0)
     }
-}
-
-
-class SimpleContext() : ContextWithStorage() {
 
     companion object {
-        fun fromSequence(sequence: Sequence<Quad>): SimpleContext {
-            return SimpleContext().apply {
+        fun fromSequence(sequence: Sequence<Quad>): ContextWithStorage {
+            return ContextWithStorage().apply {
                 addAll(sequence.toList())
             }
         }
     }
+
 }
+
+

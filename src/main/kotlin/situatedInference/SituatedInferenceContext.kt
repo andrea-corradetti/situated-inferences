@@ -60,7 +60,15 @@ fun MutableMap<Long, InMemoryContext>.findInAll(
     objectId: Long,
     contextId: Long = 0,
     status: Int = 0
-): Sequence<Quad> {
-    return values.asSequence().map { it.find(subjectId, predicateId, objectId, contextId, status) }.flatten()
+): Sequence<Quad> = sequence {
+    yieldAll(values.asSequence().map { it.find(subjectId, predicateId, objectId, contextId, status) }.flatten())
+    yieldAll(
+        values.asSequence().filterIsInstance<Quotable>()
+            .map { it.getQuoting().find(subjectId, predicateId, objectId, contextId, status) }.flatten()
+    )
+    yieldAll(
+        values.asSequence().filterIsInstance<Reified>()
+            .map { it.getQuotingInnerStatement().find(subjectId, predicateId, objectId, contextId, status) }.flatten()
+    )
 }
 
