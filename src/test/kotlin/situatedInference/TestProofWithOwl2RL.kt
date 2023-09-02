@@ -309,7 +309,7 @@ class TestProofWithOwl2RL {
             PREFIX t: <http://t#>
         
             INSERT DATA {
-                #######################################
+            #######################################
             #                                     #
             #           SHARED KNOWLEDGE          #
             #                                     #
@@ -2460,9 +2460,6 @@ class TestProofWithOwl2RL {
                 select distinct ?rs ?predicate ?object where {
                 
                     :S conj:asSingleton conj:singleton.
-                    
-                    
-                    
                     ?g conj:situate (conj:singleton rdf4j:nil).
                     
                     #?task conj:hasSituatedContext ?g.
@@ -2474,8 +2471,6 @@ class TestProofWithOwl2RL {
                     } 
                     
                     ?rs ?predicate ?object
-                    
-                    
                 }
         """.trimIndent()
 
@@ -2579,9 +2574,9 @@ class TestProofWithOwl2RL {
                 PREFIX : <http://a#>
                 
                 select distinct ?subject ?predicate ?object where {
-                    :S conj:asSingleton conj:singleton.
+                    :S conj:asSingleton ?singleton.
                     
-                    bind (conj:singleton as ?subject)
+                    bind (?singleton as ?subject)
                     ?subject ?predicate ?object
                 }
         """.trimIndent()

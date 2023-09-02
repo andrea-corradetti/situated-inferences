@@ -32,7 +32,6 @@ class SituatedContext(
         }
     }
 
-
     private fun getStatementsToSituate(): Sequence<Quad> =
         (additionalContexts + sourceContextId).asSequence().map(::replaceDefaultGraphId).map { contextInScope ->
             requestContext.inMemoryContexts[contextInScope]?.getAll()

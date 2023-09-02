@@ -162,8 +162,9 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         if (predicateId == reifiesGraphId) {
             val graphToReify = if (objectId != UNBOUND) objectId else return StatementIterator.EMPTY
+            val name by lazy {pluginConnection.entities[graphToReify]!!.stringValue() + "-reified"}
             val reificationId =
-                if (subjectId != UNBOUND) subjectId else pluginConnection.entities.put(bnode(), REQUEST)
+                if (subjectId != UNBOUND) subjectId else pluginConnection.entities.put(iri(name), REQUEST)
             val statementsToReify = requestContext.inMemoryContexts[graphToReify]?.getAll()
                 ?: pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, graphToReify).asSequence()
             val reifiedStatements = statementsToReify.map { pluginConnection.getReification(it) }.flatten()
@@ -244,8 +245,8 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             statements.get(statementId, entities.resolve(RDF.OBJECT), UNBOUND).asSequence().firstOrNull()?.`object`
                 ?: return StatementIterator.EMPTY
 
-
-        val singletonId = if (objectId != UNBOUND) objectId else entities.put(bnode(), REQUEST)
+        val name by lazy { entities[statementId]!!.stringValue() + "-singleton" }
+        val singletonId = if (objectId != UNBOUND) objectId else entities.put(iri(name), REQUEST)
 
         requestContext.inMemoryContexts[singletonId] =
             Singleton(statementId, Quad(reifiedSubject, reifiedPredicate, reifiedObject, singletonId), requestContext)
@@ -378,8 +379,10 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             }
         }
 
+        val sourceId = objectsIds.first()
+
         val situationId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(
-            bnode("Situation${UUID.randomUUID()}"),
+            iri(namespace + "situations/${UUID.randomUUID()}"),
             REQUEST
         )
 
@@ -421,6 +424,21 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     override fun transactionAborted(p0: PluginConnection?) {
         logger.debug("transaction aborted")
     }
+
+    private fun PluginConnection.getReification(
+        it: Quad
+    ): Sequence<Quad> {
+        val entities = entities
+        val statementId = getReifiedStatementId(it.subject, it.predicate, it.`object`)
+            ?: entities.put(iri(namespace,"reifications/${it.subject}-${it.predicate}-${it.`object`}"), REQUEST)
+
+        return sequenceOf(
+            Quad(statementId, entities.resolve(RDF.TYPE), entities.resolve(RDF.STATEMENT)),
+            Quad(statementId, entities.resolve(RDF.SUBJECT), it.subject),
+            Quad(statementId, entities.resolve(RDF.PREDICATE), it.predicate),
+            Quad(statementId, entities.resolve(RDF.OBJECT), it.`object`),
+        )
+    }
 }
 
 private fun PluginConnection.getReifiedStatementId(subject: Long, predicate: Long, `object`: Long): Long? {
@@ -454,19 +472,4 @@ fun Quad.replaceValues(
     `object` = if (`object` == oldId) newId else `object`,
     context = if (context == oldId) newId else context,
 )
-
-private fun PluginConnection.getReification(
-    it: Quad
-): Sequence<Quad> {
-    val entities = entities
-    val statementId = getReifiedStatementId(it.subject, it.predicate, it.`object`)
-        ?: entities.put(bnode("${it.subject}-${it.predicate}-${it.`object`}"), REQUEST)
-
-    return sequenceOf(
-        Quad(statementId, entities.resolve(RDF.TYPE), entities.resolve(RDF.STATEMENT)),
-        Quad(statementId, entities.resolve(RDF.SUBJECT), it.subject),
-        Quad(statementId, entities.resolve(RDF.PREDICATE), it.predicate),
-        Quad(statementId, entities.resolve(RDF.OBJECT), it.`object`),
-    )
-}
 
