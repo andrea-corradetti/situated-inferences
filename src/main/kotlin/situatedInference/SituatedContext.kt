@@ -10,16 +10,19 @@ import org.slf4j.LoggerFactory
 
 class SituatedContext(
     var situatedContextId: Long,
-    private val sourceContextId: Long,
+    override val sourceId: Long,
     private val additionalContexts: Set<Long> = emptySet(),
     private val requestContext: SituatedInferenceContext
 ) : ContextWithStorage(),
-    Quotable by QuotableImpl(sourceContextId, situatedContextId, requestContext),
+    Quotable by QuotableImpl(sourceId, situatedContextId, requestContext),
     AbstractInferencerTask {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private val inferencer = requestContext.inferencer
     private val repositoryConnection = requestContext.repositoryConnection
+
+    private val sourceContextId: Long
+        get() = requestContext.statementIdToSingletonId[sourceId] ?: sourceId
 
 
     fun refresh() {
@@ -28,6 +31,7 @@ class SituatedContext(
             inferClosureAndAddToStorage(it.subject, it.predicate, it.`object`, it.context)
         }
     }
+
 
     private fun getStatementsToSituate(): Sequence<Quad> =
         (additionalContexts + sourceContextId).asSequence().map(::replaceDefaultGraphId).map { contextInScope ->
@@ -67,7 +71,7 @@ class SituatedContext(
                 )
                 if (inconsistencies.isNotBlank()) logger.debug("inconsistencies {}", inconsistencies)
             }
-            //logger.debug("Running inference with {}", getPrettyStringFor(it.subject, it.predicate, it.`object`))
+//            logger.debug("Running inference with {}", getPrettyStringFor(it.subject, it.predicate, it.`object`))
 
             inferencer.doInference(
                 it.subject,
