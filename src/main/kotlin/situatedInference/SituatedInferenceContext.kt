@@ -11,9 +11,6 @@ class SituatedInferenceContext(
     val repositoryConnection: AbstractRepositoryConnection,
     val logger: Logger? = null,
 ) : RequestContext {
-
-    var sharedScope by Delegates.notNull<Long>() //TODO remove
-
     val statementIdToSingletonId = mutableMapOf<Long, Long>()
 
     val inMemoryContexts = mutableMapOf<Long, InMemoryContext>()

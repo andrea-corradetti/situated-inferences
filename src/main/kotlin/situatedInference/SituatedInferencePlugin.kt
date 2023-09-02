@@ -70,7 +70,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
 
     override fun preprocess(request: Request): RequestContext =
-        SituatedInferenceContext.fromRequest(request, logger).apply { sharedScope = sharedId }
+        SituatedInferenceContext.fromRequest(request, logger)
 
     override fun estimate(
         subjectId: Long,

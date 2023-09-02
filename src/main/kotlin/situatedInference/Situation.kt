@@ -23,9 +23,6 @@ class Situation(
 
     private var isUpdated = false
 
-    var baseContext: Long? = null
-        private set
-
 
     fun refreshAndFind(subjectId: Long, predicateId: Long, objectId: Long, contextId: Long = 0): Sequence<Quad> {
         if (!isUpdated) {
@@ -176,10 +173,7 @@ class Situation(
             repositoryConnection.getStatements(subject, predicate, `object`, status).asSequence()
                 .filter { it.isAxiom() }
         val statementsFromStorage = storage.find(subject, predicate, `object`).asSequence()
-        val sharedStatements =
-            repositoryConnection.getStatements(subject, predicate, `object`, requestContext.sharedScope, status)
-                .asSequence()
-        return statementIdIteratorFromSequence(axiomsFromRepo + statementsFromStorage + sharedStatements)
+        return statementIdIteratorFromSequence(axiomsFromRepo + statementsFromStorage)
     }
 
     override fun getRepStatements(
@@ -190,10 +184,8 @@ class Situation(
             repositoryConnection.getStatements(subject, predicate, `object`, context, status).asSequence()
                 .filter { it.isAxiom() }
         val statementsFromStorage = storage.find(subject, predicate, `object`, context).asSequence()
-        val sharedStatements =
-            repositoryConnection.getStatements(subject, predicate, `object`, requestContext.sharedScope, status)
-                .asSequence()
-        return statementIdIteratorFromSequence(axiomsFromRepo + statementsFromStorage + sharedStatements)
+
+        return statementIdIteratorFromSequence(axiomsFromRepo + statementsFromStorage)
     }
 
     private fun getPrettyStringFor(
