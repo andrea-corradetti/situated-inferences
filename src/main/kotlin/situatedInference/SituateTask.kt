@@ -17,8 +17,6 @@ class SituateTask(val taskId: Long, private val requestContext: SituatedInferenc
     val schema
         get() = schemaId?.let { requestContext.schemas[schemaId] }
 
-//    var suffixForNewNames: String = "-situated"
-
     var alreadySituated = mutableSetOf<Long>()
     var createdSituationsIds = mutableSetOf<Long>()
 

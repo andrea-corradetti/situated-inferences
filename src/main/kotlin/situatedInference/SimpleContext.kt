@@ -34,6 +34,17 @@ open class ContextWithStorage() : InMemoryContext {
         quad.run { storage.add(subject, predicate, `object`, context, status) }
     }
 
+    fun add(
+        subjectId: Long,
+        predicateId: Long,
+        objectId: Long,
+        contextId: Long = 0,
+        status: Int = 0 //TODO filter by this
+    ) {
+        storage.add(subjectId, predicateId, objectId, contextId, status)
+    }
+
+
     fun addAll(collection: Collection<Quad>) {
         collection.forEach { add(it) }
     }

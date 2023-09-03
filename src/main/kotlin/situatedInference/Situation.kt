@@ -33,32 +33,6 @@ class Situation(
         return find(subjectId, predicateId, objectId, contextId)
     }
 
-    fun materialize() {
-//        repositoryConnection.transaction {
-//            storage.find(0, 0, 0, 0).asSequence().filter { !it.isExplicit() }.forEach { stmt ->
-//                it.removeStatements(
-//                    stmt.subject,
-//                    stmt.predicate,
-//                    stmt.`object`
-//                )
-//            }
-//        }
-//
-//        refresh()
-
-        repositoryConnection.transaction {
-            storage.find(0, 0, 0, 0).asSequence().forEach { stmt ->
-                it.putStatement(
-                    stmt.subject,
-                    stmt.predicate,
-                    stmt.`object`,
-                    stmt.context,
-                    stmt.status
-                )
-            }
-        }
-    }
-
     fun refresh() {
         storage.clear()
         getStatementsToSituate().forEach {

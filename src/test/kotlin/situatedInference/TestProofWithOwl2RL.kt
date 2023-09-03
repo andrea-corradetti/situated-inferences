@@ -3,11 +3,9 @@ package situatedInference
 import com.ontotext.graphdb.Config
 import com.ontotext.test.TemporaryLocalFolder
 import com.ontotext.trree.OwlimSchemaRepository
-import com.ontotext.trree.consistency.ConsistencyException
 import org.eclipse.rdf4j.query.BindingSet
 import org.eclipse.rdf4j.repository.RepositoryException
 import org.eclipse.rdf4j.repository.sail.SailRepository
-import org.eclipse.rdf4j.sail.SailException
 import org.junit.*
 import java.util.*
 import kotlin.test.assertFailsWith
@@ -507,7 +505,9 @@ class TestProofWithOwl2RL {
         assert(result.size == 136)
         assert(result.all { it["g1"] == "http://a#LoisLanesThoughts-situated" })
 
-    } @Test
+    }
+
+    @Test
     fun `Insert statements after situating`() {
         val addNamedGraphs = """
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
@@ -2477,14 +2477,15 @@ class TestProofWithOwl2RL {
         val result1 = createCleanRepositoryWithDefaults().use { repo ->
             repo.connection.use {
                 it.prepareUpdate(addReifiedStatement).execute()
-                it.prepareTupleQuery(convertReifiedStatementWithSchema).evaluate().map(BindingSet::toStringValueMap).toSet()
+                it.prepareTupleQuery(convertReifiedStatementWithSchema).evaluate().map(BindingSet::toStringValueMap)
+                    .toSet()
             }
         }
         println("result1 set ${result1.size} $result1")
         assertTrue {
             val regex = Regex("(-?\\d+)-(-?\\d+)-(-?\\d+)|http://a#S")
 
-            result1.isNotEmpty() && result1.all { regex.containsMatchIn(it["rs"]!!)}
+            result1.isNotEmpty() && result1.all { regex.containsMatchIn(it["rs"]!!) }
         }
     }
 
@@ -2727,6 +2728,331 @@ class TestProofWithOwl2RL {
         }
         println(grouped)
         assert(result1.size == result2.size) //TODO write better checks
+    }
+
+    @Test
+    fun `Singleton from rdfstar is created correctly`() {
+        val addReifiedStatement = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+            
+            INSERT DATA {
+            
+                #######################################
+                #                                     #
+                #           SHARED KNOWLEDGE          #
+                #                                     #
+                #######################################
+        
+                :Superman a t:Person.
+                :ClarkKent a t:Person.
+    
+                :LoisLane a t:Person.
+                :MarthaKent a t:Person.
+                :I a t:Person.
+                       
+                t:FictionalPerson rdfs:subClassOf t:Person.
+                t:RealPerson rdfs:subClassOf t:Person.
+                t:FictionalPerson owl:complementOf t:RealPerson.
+               
+                :fly a t:flyingPower.
+                :clingFromCeiling a t:spiderLikePower.
+    
+                t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+               
+                t:SuperHero rdfs:subClassOf t:Person;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:supernaturalPower.
+                t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:flyingPower.   
+                t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:spiderLikePower.
+                t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .    
+                    
+                #######################################
+                #                                     #
+                #           RDF-STAR                  #
+                #                                     #
+                #######################################
+    
+            :I :thinks << :Superman :can :clingFromCeiling >>.
+                
+            }  
+        """.trimIndent()
+
+        val getStatementsQuotingEmbedded = """
+                PREFIX conj: <https://w3id.org/conjectures/>
+                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                
+                PREFIX : <http://a#>
+                
+                select distinct * where {
+                    {
+                        select distinct ?subject ?predicate ?object ?g where {
+                            :I :thinks ?triple.
+                            
+                            bind (conj:situations\/I-thinks as ?g)
+                            
+                            ?g conj:graphFromEmbedded ?triple.
+                            
+                            graph ?g {
+                                ?subject ?predicate ?object.
+                            }
+                        } 
+                    } 
+                    UNION
+                    {
+                        select distinct ?subject ?predicate ?object where {
+                            :I :thinks ?triple.
+                            bind (?triple as ?object).
+                            ?subject ?predicate ?object.
+                        }
+                    }
+                }
+        """.trimIndent()
+
+
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addReifiedStatement).execute()
+                it.prepareTupleQuery(getStatementsQuotingEmbedded).evaluate().map(BindingSet::toStringValueMap)
+                    .toSet()
+            }
+        }
+        println("result1 set ${result1.size} $result1")
+
+        assert(
+            result1.any {
+                it.entries.containsAll(
+                    mapOf(
+                        "subject" to "http://a#Superman",
+                        "predicate" to "http://a#can",
+                        "object" to "http://a#clingFromCeiling",
+                        "g" to "https://w3id.org/conjectures/situations/I-thinks"
+                    ).entries
+                )
+            }
+        )
+
+        assert(
+            result1.any {
+                it.entries.containsAll(
+                    mapOf(
+                        "subject" to "http://a#I",
+                        "predicate" to "http://a#thinks",
+                        "object" to "https://w3id.org/conjectures/situations/I-thinks"
+                    ).entries
+                )
+            }
+        )
+    }
+    @Test
+    fun `Rdfstar graph is situated correctly`() {
+        val addReifiedStatement = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+            
+            INSERT DATA {
+            
+                #######################################
+                #                                     #
+                #           SHARED KNOWLEDGE          #
+                #                                     #
+                #######################################
+        
+                :Superman a t:Person.
+                :ClarkKent a t:Person.
+    
+                :LoisLane a t:Person.
+                :MarthaKent a t:Person.
+                :I a t:Person.
+                       
+                t:FictionalPerson rdfs:subClassOf t:Person.
+                t:RealPerson rdfs:subClassOf t:Person.
+                t:FictionalPerson owl:complementOf t:RealPerson.
+               
+                :fly a t:flyingPower.
+                :clingFromCeiling a t:spiderLikePower.
+    
+                t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+               
+                t:SuperHero rdfs:subClassOf t:Person;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:supernaturalPower.
+                t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:flyingPower.   
+                t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:spiderLikePower.
+                t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .    
+                    
+                #######################################
+                #                                     #
+                #           RDF-STAR                  #
+                #                                     #
+                #######################################
+    
+            :I :thinks << :Superman :can :clingFromCeiling >>.
+                
+            }  
+        """.trimIndent()
+
+        val getStatementsQuotingEmbedded = """
+                PREFIX conj: <https://w3id.org/conjectures/>
+                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                
+                PREFIX : <http://a#>      
+                        select distinct ?subject ?predicate ?object where {
+                            :I :thinks ?triple.
+                            
+                            bind (conj:situations\/I-thinks as ?g)
+                            
+                            ?g conj:graphFromEmbedded ?triple.
+                            
+                            ?situation conj:situate (?g rdf4j:nil)
+                            
+                            graph ?situation {
+                                ?subject ?predicate ?object.
+                            }
+                        }
+                   
+        """.trimIndent()
+
+
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addReifiedStatement).execute()
+                it.prepareTupleQuery(getStatementsQuotingEmbedded).evaluate().map(BindingSet::toStringValueMap)
+                    .toSet()
+            }
+        }
+        println("result1 set ${result1.size} $result1")
+
+        assert(result1.isNotEmpty())
+        assert(
+            result1.contains(
+                mapOf(
+                    "subject" to "http://a#Superman",
+                    "predicate" to "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                    "object" to "http://t#SpiderSuperHero"
+                )
+            )
+        )
+    }
+
+    @Test
+    fun `Situating statements for rdfstar graph are returned correctly`() {
+        val addReifiedStatement = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+            
+            INSERT DATA {
+            
+                #######################################
+                #                                     #
+                #           SHARED KNOWLEDGE          #
+                #                                     #
+                #######################################
+        
+                :Superman a t:Person.
+                :ClarkKent a t:Person.
+    
+                :LoisLane a t:Person.
+                :MarthaKent a t:Person.
+                :I a t:Person.
+                       
+                t:FictionalPerson rdfs:subClassOf t:Person.
+                t:RealPerson rdfs:subClassOf t:Person.
+                t:FictionalPerson owl:complementOf t:RealPerson.
+               
+                :fly a t:flyingPower.
+                :clingFromCeiling a t:spiderLikePower.
+    
+                t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+               
+                t:SuperHero rdfs:subClassOf t:Person;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:supernaturalPower.
+                t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:flyingPower.   
+                t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:spiderLikePower.
+                t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .    
+                    
+                #######################################
+                #                                     #
+                #           RDF-STAR                  #
+                #                                     #
+                #######################################
+    
+            :I :thinks << :Superman :can :clingFromCeiling >>.
+                
+            }  
+        """.trimIndent()
+
+        val getStatementsQuotingEmbedded = """
+                PREFIX conj: <https://w3id.org/conjectures/>
+                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                
+                PREFIX : <http://a#>      
+                        select distinct ?subject ?predicate ?situation where {
+                            :I :thinks ?triple.
+
+                            
+                            :g1 conj:graphFromEmbedded ?triple.
+                            
+                            ?situation conj:situate (:g1 rdf4j:nil).
+                            
+                            
+                            ?subject ?predicate ?situation.
+                            
+                        }
+                   
+        """.trimIndent()
+
+
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addReifiedStatement).execute()
+                it.prepareTupleQuery(getStatementsQuotingEmbedded).evaluate().map(BindingSet::toStringValueMap)
+                    .toSet()
+            }
+        }
+        println("result1 set ${result1.size} $result1")
+
+        assert(result1.isNotEmpty())
+        assert(
+            result1.contains(
+                mapOf(
+                    "subject" to "http://a#Superman",
+                    "predicate" to "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                    "object" to "http://t#SpiderSuperHero"
+                )
+            )
+        )
     }
 
     companion object {

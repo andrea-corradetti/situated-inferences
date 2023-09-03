@@ -7,6 +7,8 @@ import com.ontotext.trree.sdk.Entities.Scope.SYSTEM
 import com.ontotext.trree.sdk.Entities.UNBOUND
 import org.eclipse.rdf4j.model.IRI
 import org.eclipse.rdf4j.model.Resource
+import org.eclipse.rdf4j.model.Triple
+import org.eclipse.rdf4j.model.util.Values
 import org.eclipse.rdf4j.model.util.Values.*
 import org.eclipse.rdf4j.model.vocabulary.RDF
 import java.util.*
@@ -34,10 +36,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     private val asTripleIri = iri(namespace + "asTriple")
     private val asSingletonIri = iri(namespace + "asSingleton")
     private val reifiesGraphIri = iri(namespace + "reifiesGraph")
-
-
-    private val defaultGraphId = SystemGraphs.RDF4J_NIL.id.toLong()
-
+    private val graphFromEmbeddedIri = iri(namespace + "graphFromEmbedded")
 
     override fun getName() = "Situated-Inference"
 
@@ -62,6 +61,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         asTripleId = pluginConnection.entities.put(asTripleIri, SYSTEM)
         asSingletonId = pluginConnection.entities.put(asSingletonIri, SYSTEM)
         reifiesGraphId = pluginConnection.entities.put(reifiesGraphIri, SYSTEM)
+        graphFromEmbeddedId = pluginConnection.entities.put(graphFromEmbeddedIri, SYSTEM)
 //        rdfContextId = pluginConnection.entities.put(RDF., SYSTEM)
 
 
@@ -81,11 +81,16 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         requestContext: RequestContext
     ): Double {
 
-        if (subjectId == UNBOUND && predicateId != situateSchemaId) {
+
+        if ((subjectId == UNBOUND) && predicateId != situateSchemaId) {
             return 50.0
         }
 
         if (predicateId == situateSchemaId) {
+            return 20.0
+        }
+
+        if (predicateId == situateId) {
             return 20.0
         }
 
@@ -97,9 +102,11 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             return 10.0
         }
 
+
         if (predicateId == hasSituatedContextId) {
             return 40.0
         }
+
 
         if (predicateId == reifiesGraphId) {
             return 45.0
@@ -117,12 +124,34 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         requestContext: RequestContext?
     ): StatementIterator? {
 
+
         if (requestContext !is SituatedInferenceContext) {
             return null
         }
 
         if ((requestContext.request as QueryRequest).hasSystemGraphs()) {
             return null
+        }
+
+        if (predicateId == graphFromEmbeddedId) {
+            val entities = pluginConnection.entities
+            val tripleId = if (objectId != UNBOUND) objectId else return StatementIterator.EMPTY
+            val triple = (entities[tripleId] as? Triple) ?: return StatementIterator.EMPTY
+            val graphId = if (subjectId != UNBOUND) subjectId else entities.put(bnode("triple-${UUID.randomUUID()}"), REQUEST)
+            val graph = requestContext.inMemoryContexts.getOrPut(graphId) {
+                SituatedContext(
+                    situatedContextId = graphId,
+                    sourceId = tripleId,
+                    requestContext = requestContext
+                )
+            } as ContextWithStorage
+            graph.add(
+                entities.resolve(triple.subject),
+                entities.resolve(triple.predicate),
+                entities.resolve(triple.`object`)
+            )
+            return StatementIterator.create(graphId, graphFromEmbeddedId, tripleId, contextId)
+
         }
 
         if (predicateId == asTripleId) {
@@ -162,7 +191,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         if (predicateId == reifiesGraphId) {
             val graphToReify = if (objectId != UNBOUND) objectId else return StatementIterator.EMPTY
-            val name by lazy {pluginConnection.entities[graphToReify]!!.stringValue() + "-reified"}
+            val name by lazy { pluginConnection.entities[graphToReify]!!.stringValue() + "-reified" }
             val reificationId =
                 if (subjectId != UNBOUND) subjectId else pluginConnection.entities.put(iri(name), REQUEST)
             val statementsToReify = requestContext.inMemoryContexts[graphToReify]?.getAll()
@@ -194,7 +223,8 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             task.createSituationsIfReady()
 
             return if (task.createdSituationsIds.isNotEmpty())
-                statementIteratorFromSequence(task.createdSituationsIds.asSequence().map { Quad(taskId, hasSituatedContextId, it, contextId) })
+                statementIteratorFromSequence(
+                    task.createdSituationsIds.asSequence().map { Quad(taskId, hasSituatedContextId, it, contextId) })
             else StatementIterator.EMPTY
         }
 
@@ -206,7 +236,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             requestContext.inMemoryContexts[contextId]?.find(subjectId, predicateId, objectId)
                 ?: pluginConnection.statements.get(subjectId, predicateId, objectId, contextId).asSequence()
 
-
+    //TODO may be redundant
         val quotingSubject =
             (requestContext.inMemoryContexts[subjectId] as? Quotable)?.getQuotingAsSubject()?.getAll()
                 ?: emptySequence()
@@ -304,9 +334,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     ): StatementIterator? {
         val schema = requestContext.schemas.getOrPut(contextId) { SchemaForSituate(requestContext) }
         val parsed = schema.parse(subjectId, predicateId, objectId)
-        val toReturn = schema.boundTasks.onEach { it.createSituationsIfReady() }
-            .map { Quad(it.taskId, situateSchemaId, contextId, 0) }
-//        if (toReturn.isNotEmpty()) return toReturn.asSequence().toStatementIterator()
+        schema.boundTasks.onEach { it.createSituationsIfReady() }
         return if (parsed) StatementIterator.create(subjectId, predicateId, objectId, contextId) else null
     }
 
@@ -336,7 +364,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         return when (predicateId) {
             situateId -> handleSituate(subjectId, objectsIds, pluginConnection, requestContext)
             explainId -> handleExplain(subjectId, objectsIds, contextId, pluginConnection, requestContext)
-
             else -> null
         }
     }
@@ -363,7 +390,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         requestContext.explainTasks[explainTaskId]
 
-        return StatementIterator.EMPTY //TODO finish this
+        TODO()
     }
 
     private fun handleSituate(
@@ -372,6 +399,18 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         pluginConnection: PluginConnection,
         requestContext: SituatedInferenceContext
     ): StatementIterator? {
+
+        if (objectsIds.any { it == UNBOUND }) {
+            return StatementIterator.EMPTY
+        }
+
+        val contextsInRepository by lazy {
+            requestContext.repositoryConnection.contextIDs.asSequence().map { it.context }
+        }
+        if (objectsIds.any { it !in requestContext.inMemoryContexts.keys && it != -36L && it !in contextsInRepository }) {
+            return StatementIterator.EMPTY
+        }
+
         objectsIds.map { pluginConnection.entities[it] }.filter { !it.isBNode && !it.isIRI }.let { values ->
             if (values.isNotEmpty()) {
                 val message = values.joinToString("\n") { "${it.stringValue()} in object list isn't a valid graph." }
@@ -379,33 +418,26 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             }
         }
 
-        val sourceId = objectsIds.first()
+        val sourceId =
+            (requestContext.inMemoryContexts[objectsIds.first()] as? Quotable)?.sourceId ?: objectsIds.first()
 
-        val situationId = if (subjectId.isBound()) subjectId else pluginConnection.entities.put(
+        val situationId = if (subjectId != UNBOUND) subjectId else pluginConnection.entities.put(
             iri(namespace + "situations/${UUID.randomUUID()}"),
             REQUEST
         )
+//        requestContext.inMemoryContexts[situationId] = Situation(
+//            situationId, objectsIds.toSet(), requestContext
+//        ).apply { refresh() }
 
-//        val sharedSituation = requestContext.situations[sharedId]
-
-        requestContext.inMemoryContexts[situationId] = Situation(
-            situationId, objectsIds.toSet(), requestContext
+        requestContext.inMemoryContexts[situationId] = SituatedContext(
+            situationId, sourceId, objectsIds.toSet(), requestContext
         ).apply { refresh() }
 
-        return StatementIterator.create(
-            objectsIds.map { longArrayOf(situationId, situateId, it, 0L) }.toTypedArray()
-        )
+//        return StatementIterator.create(
+//            objectsIds.map { longArrayOf(situationId, situateId, it, 0L) }.toTypedArray()
+//        )
+        return StatementIterator.create(situationId, situateId, 1, 0)
     }
-
-
-//    private fun getAntecedentsWithRule(
-//        quad: Quad, pluginConnection: PluginConnection, requestContext: SituatedInferenceContext
-//    ): MutableSet<Solution?> {
-//        val reificationId = pluginConnection.entities.put(bnode(), REQUEST)
-//        val statementProps = requestContext.repositoryConnection.getExplicitStatementProps(quad.asTriple())
-//        return ExplainIter(requestContext, reificationId, 0, quad, statementProps).solutions
-//    }
-
 
     private fun Long.isBound(): Boolean = this != 0L
 
@@ -430,7 +462,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     ): Sequence<Quad> {
         val entities = entities
         val statementId = getReifiedStatementId(it.subject, it.predicate, it.`object`)
-            ?: entities.put(iri(namespace,"reifications/${it.subject}-${it.predicate}-${it.`object`}"), REQUEST)
+            ?: entities.put(iri(namespace, "reifications/${it.subject}-${it.predicate}-${it.`object`}"), REQUEST)
 
         return sequenceOf(
             Quad(statementId, entities.resolve(RDF.TYPE), entities.resolve(RDF.STATEMENT)),
