@@ -80,11 +80,27 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         pluginConnection: PluginConnection,
         requestContext: RequestContext
     ): Double {
-
-
-        if ((subjectId == UNBOUND) && predicateId != situateSchemaId) {
-            return 50.0
+        if (subjectId == UNBOUND && predicateId == UNBOUND && objectId == UNBOUND && contextId == UNBOUND) {
+            return 10000.0
         }
+
+        if (subjectId == UNBOUND && predicateId != situateSchemaId && predicateId < 0) {
+            return 100.0
+        }
+
+        if (predicateId > 0) {
+            return 5.0
+        }
+
+        if (predicateId == graphFromEmbeddedId) {
+            return 10.0
+        }
+
+
+        if (pluginConnection.entities.get(contextId)?.stringValue()?.startsWith(schemasNamespace) == true) {
+            return 10.0
+        }
+
 
         if (predicateId == situateSchemaId) {
             return 20.0
@@ -92,14 +108,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         if (predicateId == situateId) {
             return 20.0
-        }
-
-        if (predicateId == appendToContextsId) {
-            return 20.0
-        }
-
-        if (pluginConnection.entities.get(contextId)?.stringValue()?.startsWith(schemasNamespace) == true) {
-            return 10.0
         }
 
 
@@ -112,7 +120,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             return 45.0
         }
 
-        return Double.MAX_VALUE
+        return 9000.0
     }
 
     override fun interpret(
@@ -342,10 +350,16 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     override fun estimate(
         p0: Long, p1: Long, p2: LongArray?, p3: Long, p4: PluginConnection?, requestContext: RequestContext?
     ): Double {
-        if (requestContext !is SituatedInferenceContext) {
-            return Double.MAX_VALUE
+        if (p1 == situateId) {
+            if (p2?.any { it == UNBOUND} == true) {
+                return 10000.0
+            }
+            return 20.0
         }
-        return 1.0
+
+        return 10000.0
+
+
     }
 
     //For list objects
