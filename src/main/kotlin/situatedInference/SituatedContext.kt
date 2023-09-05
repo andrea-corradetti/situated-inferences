@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory
 class SituatedContext(
     var situatedContextId: Long,
     override val sourceId: Long,
+    private val mainContextId: Long? = null,
     private val additionalContexts: Set<Long> = emptySet(),
     private val requestContext: SituatedInferenceContext
 ) : ContextWithStorage(),
@@ -21,8 +22,8 @@ class SituatedContext(
     private val inferencer = requestContext.inferencer
     private val repositoryConnection = requestContext.repositoryConnection
 
-    private val sourceContextId: Long
-        get() = requestContext.statementIdToSingletonId[sourceId] ?: sourceId
+//    private val sourceContextId: Long
+//        get() = requestContext.statementIdToSingletonId[sourceId] ?: sourceId
 
 
     fun refresh() {
@@ -32,8 +33,9 @@ class SituatedContext(
         }
     }
 
+    //TODO fix nullable
     private fun getStatementsToSituate(): Sequence<Quad> =
-        (additionalContexts + sourceContextId).asSequence().map(::replaceDefaultGraphId).map { contextInScope ->
+        (additionalContexts + mainContextId!!).asSequence().map(::replaceDefaultGraphId).map { contextInScope ->
             requestContext.inMemoryContexts[contextInScope]?.getAll()
                 ?: requestContext.repositoryConnection.getStatements(
                     Entities.UNBOUND,

@@ -8,7 +8,6 @@ import com.ontotext.trree.sdk.Entities.UNBOUND
 import org.eclipse.rdf4j.model.IRI
 import org.eclipse.rdf4j.model.Resource
 import org.eclipse.rdf4j.model.Triple
-import org.eclipse.rdf4j.model.util.Values
 import org.eclipse.rdf4j.model.util.Values.*
 import org.eclipse.rdf4j.model.vocabulary.RDF
 import java.util.*
@@ -20,8 +19,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     //TODO move to object
 
     private val namespace = "https://w3id.org/conjectures/"
-    private val schemasNamespace = namespace + "schemas"
-    private val explainIri = iri(namespace + "explain")
     private val situateIri = iri(namespace + "situate")
     private val sharedIri = iri(namespace + "shared")
     private val situateInsideIri = iri(namespace + "situateInside")
@@ -37,12 +34,14 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     private val asSingletonIri = iri(namespace + "asSingleton")
     private val reifiesGraphIri = iri(namespace + "reifiesGraph")
     private val graphFromEmbeddedIri = iri(namespace + "graphFromEmbedded")
+    private val testBlankIri = iri(namespace + "testBlank")
+    private val groupsTripleIri = iri(namespace + "groupsTriple")
 
     override fun getName() = "Situated-Inference"
 
     //FIXME this is getting hard to work with
     override fun initialize(reason: InitReason, pluginConnection: PluginConnection) {
-        explainId = pluginConnection.entities.put(explainIri, Entities.Scope.SYSTEM)
+        explainId = pluginConnection.entities.put(iri(namespace + "explain"), Entities.Scope.SYSTEM)
         situateId = pluginConnection.entities.put(situateIri, Entities.Scope.SYSTEM)
         sharedId = pluginConnection.entities.put(sharedIri, Entities.Scope.SYSTEM)
         situateInsideId = pluginConnection.entities.put(situateInsideIri, Entities.Scope.SYSTEM)
@@ -62,6 +61,9 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         asSingletonId = pluginConnection.entities.put(asSingletonIri, SYSTEM)
         reifiesGraphId = pluginConnection.entities.put(reifiesGraphIri, SYSTEM)
         graphFromEmbeddedId = pluginConnection.entities.put(graphFromEmbeddedIri, SYSTEM)
+        testBlankId = pluginConnection.entities.put(testBlankIri, SYSTEM)
+        groupsTripleId = pluginConnection.entities.put(groupsTripleIri, SYSTEM)
+
 //        rdfContextId = pluginConnection.entities.put(RDF., SYSTEM)
 
 
@@ -88,18 +90,20 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             return 100.0
         }
 
+        if (pluginConnection.entities.get(contextId)?.stringValue()?.startsWith(namespace + "schemas") == true) {
+            if (subjectId == UNBOUND) return 10000.0
+            return 10.0
+        }
+
         if (predicateId > 0) {
             return 5.0
         }
 
         if (predicateId == graphFromEmbeddedId) {
-            return 10.0
+            return 9.0
         }
 
 
-        if (pluginConnection.entities.get(contextId)?.stringValue()?.startsWith(schemasNamespace) == true) {
-            return 10.0
-        }
 
 
         if (predicateId == situateSchemaId) {
@@ -141,11 +145,21 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             return null
         }
 
+        if (predicateId == testBlankId) {
+            val statements = pluginConnection.statements.get(subjectId, predicateId, objectId)
+
+        }
+        if (predicateId == situatedContextId) {
+            val statements = pluginConnection.statements.get(subjectId, predicateId, objectId)
+
+        }
+
         if (predicateId == graphFromEmbeddedId) {
             val entities = pluginConnection.entities
             val tripleId = if (objectId != UNBOUND) objectId else return StatementIterator.EMPTY
             val triple = (entities[tripleId] as? Triple) ?: return StatementIterator.EMPTY
-            val graphId = if (subjectId != UNBOUND) subjectId else entities.put(bnode("triple-${UUID.randomUUID()}"), REQUEST)
+            val graphId =
+                if (subjectId != UNBOUND) subjectId else entities.put(iri(namespace, "triple-${objectId}"), REQUEST)
             val graph = requestContext.inMemoryContexts.getOrPut(graphId) {
                 SituatedContext(
                     situatedContextId = graphId,
@@ -159,8 +173,25 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
                 entities.resolve(triple.`object`)
             )
             return StatementIterator.create(graphId, graphFromEmbeddedId, tripleId, contextId)
-
         }
+
+        if (predicateId == groupsTripleId) {
+            if (subjectId == UNBOUND || objectId == UNBOUND) return StatementIterator.EMPTY
+            val triple = pluginConnection.entities[objectId] as? Triple ?: return StatementIterator.EMPTY
+            val context =
+                requestContext.inMemoryContexts.getOrPut(subjectId) { SituatedContext(
+                    situatedContextId = subjectId,
+                    sourceId = objectId,
+                    requestContext = requestContext
+                ) } as ContextWithStorage
+            context.add(
+                pluginConnection.entities.resolve(triple.subject),
+                pluginConnection.entities.resolve(triple.predicate),
+                pluginConnection.entities.resolve(triple.`object`)
+            )
+            return StatementIterator.create(subjectId, groupsTripleId, objectId, contextId)
+        }
+
 
         if (predicateId == asTripleId) {
             val entities = pluginConnection.entities
@@ -244,7 +275,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             requestContext.inMemoryContexts[contextId]?.find(subjectId, predicateId, objectId)
                 ?: pluginConnection.statements.get(subjectId, predicateId, objectId, contextId).asSequence()
 
-    //TODO may be redundant
+        //TODO may be redundant
         val quotingSubject =
             (requestContext.inMemoryContexts[subjectId] as? Quotable)?.getQuotingAsSubject()?.getAll()
                 ?: emptySequence()
@@ -343,7 +374,10 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         val schema = requestContext.schemas.getOrPut(contextId) { SchemaForSituate(requestContext) }
         val parsed = schema.parse(subjectId, predicateId, objectId)
         schema.boundTasks.onEach { it.createSituationsIfReady() }
-        return if (parsed) StatementIterator.create(subjectId, predicateId, objectId, contextId) else null
+        return if (parsed)
+            StatementIterator.create(subjectId, predicateId, objectId, contextId)
+        else
+            StatementIterator.EMPTY
     }
 
 
@@ -351,7 +385,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         p0: Long, p1: Long, p2: LongArray?, p3: Long, p4: PluginConnection?, requestContext: RequestContext?
     ): Double {
         if (p1 == situateId) {
-            if (p2?.any { it == UNBOUND} == true) {
+            if (p2?.any { it == UNBOUND } == true) {
                 return 10000.0
             }
             return 20.0
@@ -444,13 +478,13 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 //        ).apply { refresh() }
 
         requestContext.inMemoryContexts[situationId] = SituatedContext(
-            situationId, sourceId, objectsIds.toSet(), requestContext
+            situationId, sourceId, objectsIds.first(), objectsIds.toSet(), requestContext
         ).apply { refresh() }
 
-//        return StatementIterator.create(
-//            objectsIds.map { longArrayOf(situationId, situateId, it, 0L) }.toTypedArray()
-//        )
-        return StatementIterator.create(situationId, situateId, 1, 0)
+        return StatementIterator.create(
+            objectsIds.map { longArrayOf(situationId, situateId, it, 0L) }.toTypedArray()
+        )
+//        return StatementIterator.create(situationId, situateId, 0, 0)
     }
 
     private fun Long.isBound(): Boolean = this != 0L

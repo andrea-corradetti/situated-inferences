@@ -3,7 +3,6 @@ package situatedInference
 import com.ontotext.trree.AbstractRepositoryConnection
 import com.ontotext.trree.entitypool.EntityPoolConnection
 import com.ontotext.trree.entitypool.PluginEntitiesAdapter
-import com.ontotext.trree.sdk.Entities
 import com.ontotext.trree.sdk.Entities.Scope.REQUEST
 import com.ontotext.trree.sdk.PluginException
 import org.eclipse.rdf4j.model.util.Values.iri
@@ -34,7 +33,13 @@ class SituateTask(val taskId: Long, private val requestContext: SituatedInferenc
 
 
         val sourceId = (requestContext.inMemoryContexts[contextId] as? Quotable)?.sourceId ?: contextId
-        return SituatedContext(newSituationId, sourceId, schema.sharedContexts, requestContext).apply { refresh() }
+        return SituatedContext(
+            newSituationId,
+            sourceId,
+            mainContextId = contextId,
+            additionalContexts = schema.sharedContexts,
+            requestContext
+        ).apply { refresh() }
     }
 
     fun createSituations() {
@@ -56,7 +61,7 @@ class SituateTask(val taskId: Long, private val requestContext: SituatedInferenc
         createdSituationsIds.toList().forEach { situationId ->
             val situation = requestContext.inMemoryContexts[situationId] as? SituatedContext ?: return
             val baseName = entities.get(situation.sourceId).stringValue()
-            val newId = entities.put(iri(baseName+ schema!!.suffix ), REQUEST)
+            val newId = entities.put(iri(baseName + schema!!.suffix), REQUEST)
             requestContext.inMemoryContexts.remove(situationId)
             createdSituationsIds.remove(situationId)
             createdSituationsIds.add(newId)
