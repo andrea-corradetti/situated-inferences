@@ -67,5 +67,10 @@ fun MutableMap<Long, InMemoryContext>.findInAll(
         values.asSequence().filterIsInstance<Reified>()
             .map { it.getQuotingInnerStatement().find(subjectId, predicateId, objectId, contextId, status) }.flatten()
     )
+    yieldAll(
+        values.asSequence().filterIsInstance<Expandable>()
+            .map { it.getExpansions().find(subjectId, predicateId, objectId, contextId, status) }.flatten()
+    )
+
 }
 

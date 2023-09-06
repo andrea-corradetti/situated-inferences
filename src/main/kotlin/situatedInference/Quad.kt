@@ -55,8 +55,9 @@ data class Quad(
 }
 
 
+
 data class Triple(
-    @JvmField val subject: Long,
-    @JvmField val predicate: Long,
-    @JvmField val `object`: Long,
+    val subject: Long,
+    val predicate: Long,
+    val `object`: Long,
 )

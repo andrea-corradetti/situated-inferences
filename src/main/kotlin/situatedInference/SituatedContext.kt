@@ -29,7 +29,7 @@ class SituatedContext(
     fun refresh() {
         storage.clear()
         getStatementsToSituate().forEach {
-            inferClosureAndAddToStorage(it.subject, it.predicate, it.`object`, it.context)
+            inferLocally(it.subject, it.predicate, it.`object`, it.context)
         }
     }
 
@@ -48,9 +48,10 @@ class SituatedContext(
 
 
     //FIXME same triples with different contexts are duplicated in storage (this might be good for inconsistencies)
-    private fun inferClosureAndAddToStorage(subject: Long, predicate: Long, `object`: Long, context: Long) {
+    private fun inferLocally(subject: Long, predicate: Long, `object`: Long, context: Long) {
         val storageIterator = storage.bottom()
-        storage.add(subject, predicate, `object`, context, StatementIdIterator.EXPLICIT_STATEMENT_STATUS)
+        storage.add(subject, predicate, `object`, situatedContextId, StatementIdIterator.EXPLICIT_STATEMENT_STATUS)
+//        storage.add(subject, predicate, `object`, context, StatementIdIterator.EXPLICIT_STATEMENT_STATUS)
         logger.debug("forward chaining added ${getPrettyStringFor(subject, predicate, `object`)}")
 
         if (!requestContext.isInferenceEnabled) {
@@ -111,7 +112,8 @@ class SituatedContext(
             return
         }
 
-        storage.add(subject, predicate, `object`, context, status)
+        storage.add(subject, predicate, `object`, situatedContextId, status)
+//        storage.add(subject, predicate, `object`, context, status)
 //        logger.debug(
 //            "Rule fired and adding inferred statement ${
 //                getPrettyStringFor(subject, predicate, `object`)

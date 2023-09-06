@@ -5,6 +5,7 @@ import com.ontotext.trree.AbstractInferencerTask
 import com.ontotext.trree.StatementIdIterator
 import com.ontotext.trree.StatementIdIterator.*
 import com.ontotext.trree.SwitchableInferencer
+import com.ontotext.trree.entitypool.PluginEntitiesAdapter
 import com.ontotext.trree.sdk.Entities.Type.LITERAL
 import com.ontotext.trree.sdk.Entities.Type.URI
 import com.ontotext.trree.sdk.Entities.UNBOUND
@@ -55,9 +56,11 @@ class Situation(
 
     //FIXME same triples with different contexts are duplicated in storage (this might be good for inconsistencies)
     private fun inferClosureAndAddToStorage(subject: Long, predicate: Long, `object`: Long, context: Long) {
+        val entitiesAdapter = repositoryConnection.entityPoolConnection.entities
+
         val storageIterator = storage.bottom()
         storage.add(subject, predicate, `object`, context, EXPLICIT_STATEMENT_STATUS)
-        logger.debug("forward chaining added ${getPrettyStringFor(subject, predicate, `object`)}")
+        logger.debug("forward chaining added ${entitiesAdapter.getPrettyStringFor(subject, predicate, `object`)}")
 
         if (!requestContext.isInferenceEnabled) {
             logger.warn("Inference is not enabled - skipping inference")
@@ -78,7 +81,7 @@ class Situation(
                 )
                 if (inconsistencies.isNotBlank()) logger.debug("inconsistencies {}", inconsistencies)
             }
-            logger.debug("Running inference with {}", getPrettyStringFor(it.subject, it.predicate, it.`object`))
+            logger.debug("Running inference with {}", entitiesAdapter.getPrettyStringFor(it.subject, it.predicate, it.`object`))
 
             inferencer.doInference(
                 it.subject,
@@ -112,7 +115,7 @@ class Situation(
 
         if (statementIsAxiom(subject, predicate, `object`)) {
             logger.debug(
-                "Rule fired but statement already existing as axiom ${getPrettyStringFor(subject, predicate, `object`)}"
+                "Rule fired but statement already existing as axiom ${entitiesAdapter.getPrettyStringFor(subject, predicate, `object`)}"
             )
             return
         }
@@ -120,7 +123,7 @@ class Situation(
         storage.add(subject, predicate, `object`, context, status)
         logger.debug(
             "Rule fired and adding inferred statement ${
-                getPrettyStringFor(subject, predicate, `object`)
+                entitiesAdapter.getPrettyStringFor(subject, predicate, `object`)
             }" + " Total size ${storage.size()}"
         )
     }
@@ -162,33 +165,7 @@ class Situation(
         return statementIdIteratorFromSequence(axiomsFromRepo + statementsFromStorage)
     }
 
-    private fun getPrettyStringFor(
-        subject: Long,
-        predicate: Long,
-        `object`: Long,
-        context: Long? = null
-    ) = buildString {
-        append("($subject $predicate $`object` $context):")
-        append("(")
-        append(getPrettyStringValue(subject) + " ")
-        append(getPrettyStringValue(predicate) + " ")
-        append(getPrettyStringValue(`object`) + " ")
-        append(getPrettyStringValue(context))
-        append(")")
-    }
 
-
-    private fun getPrettyStringValue(entityId: Long?): String {
-        return when (entityId) {
-            null -> "null"
-            0L -> "unbound"
-            else -> try {
-                repositoryConnection.entityPoolConnection.entities[entityId].stringValue()
-            } catch (e: Exception) {
-                "no entity found"
-            }
-        }
-    }
 
 
     override fun doInference(
@@ -204,3 +181,30 @@ class Situation(
 
 }
 
+fun PluginEntitiesAdapter.getPrettyStringFor(
+    subject: Long,
+    predicate: Long,
+    `object`: Long,
+    context: Long? = null
+) = buildString {
+    append("($subject $predicate $`object` $context):")
+    append("(")
+    append(getPrettyStringValue(subject) + " ")
+    append(getPrettyStringValue(predicate) + " ")
+    append(getPrettyStringValue(`object`) + " ")
+    append(getPrettyStringValue(context))
+    append(")")
+}
+
+
+fun PluginEntitiesAdapter.getPrettyStringValue(entityId: Long?): String {
+    return when (entityId) {
+        null -> "null"
+        0L -> "unbound"
+        else -> try {
+            this[entityId].stringValue()
+        } catch (e: Exception) {
+            "no entity found"
+        }
+    }
+}

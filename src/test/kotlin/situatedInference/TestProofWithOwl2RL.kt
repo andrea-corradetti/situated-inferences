@@ -3180,8 +3180,157 @@ class TestProofWithOwl2RL {
                 mapOf(
                     "subject" to "http://a#Superman",
                     "predicate" to "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                    "object" to "http://t#SpiderSuperHero"
+                    "object" to "http://t#SpiderSuperHero",
+                    "context" to "https://w3id.org/conjectures/situations/I-thinks"
                 )
+            )
+        )
+        assert(
+            result1.contains(
+                mapOf(
+                    "subject" to "http://a#I",
+                    "predicate" to "http://a#thinks",
+                    "object" to "https://w3id.org/conjectures/situations/I-thinks",
+                    "context" to "http://www.ontotext.com/explicit"
+                )
+
+            )
+        )
+    }
+
+    @Test
+    fun `Graph for rdf-star is expanded in situating triples`() {
+        val addReifiedStatement = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+            
+            INSERT DATA {
+            
+                #######################################
+                #                                     #
+                #           SHARED KNOWLEDGE          #
+                #                                     #
+                #######################################
+        
+                :Superman a t:Person.
+                :ClarkKent a t:Person.
+    
+                :LoisLane a t:Person.
+                :MarthaKent a t:Person.
+                :I a t:Person.
+                       
+                t:FictionalPerson rdfs:subClassOf t:Person.
+                t:RealPerson rdfs:subClassOf t:Person.
+                t:FictionalPerson owl:complementOf t:RealPerson.
+               
+                :fly a t:flyingPower.
+                :clingFromCeiling a t:spiderLikePower.
+    
+                t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+               
+                t:SuperHero rdfs:subClassOf t:Person;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:supernaturalPower.
+                t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:flyingPower.   
+                t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:spiderLikePower.
+                t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .    
+                    
+                #######################################
+                #                                     #
+                #           RDF-STAR                  #
+                #                                     #
+                #######################################
+    
+            :I :thinks << :Superman :can :clingFromCeiling >>.
+                
+            }  
+        """.trimIndent()
+
+        val getStatementsQuotingEmbedded = """
+                PREFIX conj: <https://w3id.org/conjectures/>
+                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                PREFIX : <http://a#>      
+                
+                select distinct  ?subject ?predicate ?object ?context where {
+                    :I :thinks ?triple.
+                    
+                    bind (conj:situations\/I-thinks as ?g)
+             
+                    ?g conj:groupsTriple ?triple.
+                     
+                     graph conj:schemas\/s {
+                        ?g a conj:SituatedContext.
+                        rdf4j:nil a conj:SharedKnowledgeContext.
+                     }
+                     
+                    conj:task conj:situateSchema conj:schemas\/s.
+                    
+                    conj:expanded conj:expands ?g
+                            
+                    {
+                        bind (conj:expanded as ?object).
+                        graph ?context {
+                            ?subject ?predicate ?object . 
+                        }
+                    } 
+                    UNION
+                    {
+                        bind (conj:expanded as ?subject).
+                        graph ?context {
+                            ?subject ?predicate ?object . 
+                        }
+                    }
+                    UNION
+                    {
+                        graph ?context {
+                            ?subject ?predicate ?object
+                        }
+                    }
+                    
+                }
+               
+        """.trimIndent()
+
+
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addReifiedStatement).execute()
+                it.prepareTupleQuery(getStatementsQuotingEmbedded).evaluate().map(BindingSet::toStringValueMap)
+                    .toSet()
+            }
+        }
+        println("result1 set ${result1.size} $result1")
+
+        assert(result1.isNotEmpty())
+        assert(
+            result1.contains(
+                mapOf(
+                    "subject" to "http://a#Superman",
+                    "predicate" to "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                    "object" to "http://t#SpiderSuperHero",
+                    "context" to "https://w3id.org/conjectures/situations/I-thinks"
+                )
+            )
+        )
+        assert(
+            result1.contains(
+                mapOf(
+                    "subject" to "http://a#I",
+                    "predicate" to "http://a#thinks",
+                    "object" to "https://w3id.org/conjectures/situations/I-thinks",
+                    "context" to "http://www.ontotext.com/explicit"
+                )
+
             )
         )
     }

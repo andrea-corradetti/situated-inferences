@@ -53,6 +53,9 @@ open class ContextWithStorage() : InMemoryContext {
         quads.forEach { add(it) }
     }
 
+    fun addAll(sequence: Sequence<Quad>) {
+        sequence.forEach { add(it) }
+    }
 
     override fun find(
         subjectId: Long,

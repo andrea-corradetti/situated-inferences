@@ -36,6 +36,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     private val graphFromEmbeddedIri = iri(namespace + "graphFromEmbedded")
     private val testBlankIri = iri(namespace + "testBlank")
     private val groupsTripleIri = iri(namespace + "groupsTriple")
+    private val expandsIri = iri(namespace + "expands")
 
     override fun getName() = "Situated-Inference"
 
@@ -63,6 +64,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         graphFromEmbeddedId = pluginConnection.entities.put(graphFromEmbeddedIri, SYSTEM)
         testBlankId = pluginConnection.entities.put(testBlankIri, SYSTEM)
         groupsTripleId = pluginConnection.entities.put(groupsTripleIri, SYSTEM)
+        expandsId = pluginConnection.entities.put(expandsIri, SYSTEM)
 
 //        rdfContextId = pluginConnection.entities.put(RDF., SYSTEM)
 
@@ -124,6 +126,10 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             return 45.0
         }
 
+        if (predicateId == expandsId) {
+            return 45.0
+        }
+
         return 9000.0
     }
 
@@ -145,14 +151,10 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             return null
         }
 
-        if (predicateId == testBlankId) {
-            val statements = pluginConnection.statements.get(subjectId, predicateId, objectId)
-
+        if (predicateId == expandsId) {
+            return handleExpanse(objectId, subjectId, requestContext, contextId)
         }
-        if (predicateId == situatedContextId) {
-            val statements = pluginConnection.statements.get(subjectId, predicateId, objectId)
 
-        }
 
         if (predicateId == graphFromEmbeddedId) {
             val entities = pluginConnection.entities
@@ -176,20 +178,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         }
 
         if (predicateId == groupsTripleId) {
-            if (subjectId == UNBOUND || objectId == UNBOUND) return StatementIterator.EMPTY
-            val triple = pluginConnection.entities[objectId] as? Triple ?: return StatementIterator.EMPTY
-            val context =
-                requestContext.inMemoryContexts.getOrPut(subjectId) { SituatedContext(
-                    situatedContextId = subjectId,
-                    sourceId = objectId,
-                    requestContext = requestContext
-                ) } as ContextWithStorage
-            context.add(
-                pluginConnection.entities.resolve(triple.subject),
-                pluginConnection.entities.resolve(triple.predicate),
-                pluginConnection.entities.resolve(triple.`object`)
-            )
-            return StatementIterator.create(subjectId, groupsTripleId, objectId, contextId)
+            return handleGroupsTriple(subjectId, objectId, pluginConnection, requestContext, contextId)
         }
 
 
@@ -284,6 +273,53 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             (requestContext.inMemoryContexts[objectId] as? Quotable)?.getQuotingAsObject()?.getAll() ?: emptySequence()
 
         return (statements + quotingSubject + quotingObject).toStatementIterator()
+    }
+
+    private fun handleExpanse(
+        objectId: Long,
+        subjectId: Long,
+        requestContext: SituatedInferenceContext,
+        contextId: Long
+    ): StatementIterator? {
+        val graphToExpand = if (objectId != UNBOUND) objectId else return StatementIterator.EMPTY
+        val expanded = if (subjectId != UNBOUND) subjectId else return StatementIterator.EMPTY
+        //            if (requestContext.inMemoryContexts[graphToExpand] == null || graphToExpand !in requestContext.repositoryConnection.contextIDs.asSequence()
+        //                    .map { it.context }
+        //            ) return StatementIterator.EMPTY
+        requestContext.inMemoryContexts[expanded] = ExpandableContext(
+            (requestContext.inMemoryContexts[graphToExpand] as? Quotable)?.sourceId ?: graphToExpand,
+            expanded,
+
+            requestContext
+        ).apply { addAll(requestContext.inMemoryContexts[graphToExpand]?.getAll() ?: emptySequence()) }
+
+
+        return StatementIterator.create(expanded, expandsId, graphToExpand, contextId)
+    }
+
+    private fun handleGroupsTriple(
+        subjectId: Long,
+        objectId: Long,
+        pluginConnection: PluginConnection,
+        requestContext: SituatedInferenceContext,
+        contextId: Long
+    ): StatementIterator? {
+        if (subjectId == UNBOUND || objectId == UNBOUND) return StatementIterator.EMPTY
+        val triple = pluginConnection.entities[objectId] as? Triple ?: return StatementIterator.EMPTY
+        val context =
+            requestContext.inMemoryContexts.getOrPut(subjectId) {
+                SituatedContext(
+                    situatedContextId = subjectId,
+                    sourceId = objectId,
+                    requestContext = requestContext
+                )
+            } as ContextWithStorage
+        context.add(
+            pluginConnection.entities.resolve(triple.subject),
+            pluginConnection.entities.resolve(triple.predicate),
+            pluginConnection.entities.resolve(triple.`object`)
+        )
+        return StatementIterator.create(subjectId, groupsTripleId, objectId, contextId)
     }
 
     private fun handleAsSingleton(

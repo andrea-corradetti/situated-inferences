@@ -52,7 +52,7 @@ class SituateTask(val taskId: Long, private val requestContext: SituatedInferenc
     }
 
     fun createSituationsIfReady() {
-        if (schema != null) {
+        if (schema?.contextsToSituate?.all { requestContext.contextExists(it) } == true) {
             createSituations()
         }
     }
@@ -94,4 +94,9 @@ fun <R> EntityPoolConnection.transaction(block: (EntityPoolConnection) -> R): R 
         this.rollback()
         throw e
     }
+}
+
+fun SituatedInferenceContext.contextExists(contextId: Long): Boolean {
+    return inMemoryContexts[contextId] != null || contextId in repositoryConnection.contextIDs.asSequence()
+        .map { it.context }
 }
