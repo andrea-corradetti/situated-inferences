@@ -4,25 +4,7 @@ import com.ontotext.trree.plugin.provenance.MemoryStorage
 import com.ontotext.trree.plugin.provenance.Storage
 
 
-interface InMemoryContext {
-
-//    fun find(quad: Quad): Sequence<Quad>
-
-    fun find(subjectId: Long, predicateId: Long, objectId: Long, contextId: Long = 0, status: Int = 0): Sequence<Quad>
-
-//    fun contains(quad: Quad): Boolean {
-//        return find(quad).any()
-//    }
-
-    fun contains(subjectId: Long, predicateId: Long, objectId: Long, contextId: Long = 0): Boolean {
-        return find(subjectId, predicateId, objectId, contextId).any()
-    }
-
-    fun getAll(): Sequence<Quad>
-
-}
-
-
+//TODO refactor to Interface and impl
 open class ContextWithStorage() : InMemoryContext {
     val storage: Storage = MemoryStorage()
 
@@ -34,7 +16,7 @@ open class ContextWithStorage() : InMemoryContext {
         quad.run { storage.add(subject, predicate, `object`, context, status) }
     }
 
-    fun add(
+    open fun add(
         subjectId: Long,
         predicateId: Long,
         objectId: Long,
