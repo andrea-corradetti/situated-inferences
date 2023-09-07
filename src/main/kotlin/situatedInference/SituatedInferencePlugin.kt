@@ -162,41 +162,14 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         }
 
         if (predicateId == disagreesWith) {
-            if (subjectId != UNBOUND && objectId != UNBOUND) {
-                return handleDisagreesWith(subjectId, objectId, contextId, requestContext, pluginConnection)
-            }
-            if (subjectId != UNBOUND) {
-                val allContexts =
-                    requestContext.inMemoryContexts.keys + requestContext.repositoryConnection.contextIDs.asSequence()
-                        .map { it.context }
 
-                val disagreements = allContexts.asSequence().map {
-                    handleDisagreesWith(subjectId, it, contextId, requestContext, pluginConnection)?.asSequence()
-                        ?: emptySequence()
-                }.flatten()
-
-                return disagreements.toStatementIterator()
-
+            val pairs = when {
+                subjectId == UNBOUND && objectId == UNBOUND -> requestContext.allContexts.pairs()
+                subjectId.isBound() -> requestContext.allContexts.map { Pair(subjectId, it) }.asSequence()
+                objectId.isBound() -> requestContext.allContexts.map { Pair(it, objectId)}.asSequence()
+                else -> sequenceOf(Pair(subjectId, objectId))
             }
 
-            if (objectId != UNBOUND) {
-                val allContexts =
-                    requestContext.inMemoryContexts.keys + requestContext.repositoryConnection.contextIDs.asSequence()
-                        .map { it.context }
-
-                val disagreements = allContexts.asSequence().map {
-                    handleDisagreesWith(it, objectId, contextId, requestContext, pluginConnection)?.asSequence()
-                        ?: emptySequence()
-                }.flatten()
-
-                return disagreements.toStatementIterator()
-            }
-
-            val allContexts =
-                requestContext.inMemoryContexts.keys + requestContext.repositoryConnection.contextIDs.asSequence()
-                    .map { it.context }
-
-            val pairs = allContexts.pairs()
             val disagreements = pairs.map {
                 handleDisagreesWith(it.first, it.second, contextId, requestContext, pluginConnection)?.asSequence()
                     ?: emptySequence()

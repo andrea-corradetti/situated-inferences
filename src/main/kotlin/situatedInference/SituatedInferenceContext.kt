@@ -8,7 +8,6 @@ import org.eclipse.rdf4j.repository.sail.SailRepository
 import org.slf4j.Logger
 import java.util.*
 import kotlin.io.path.createTempDirectory
-import kotlin.properties.Delegates
 
 class SituatedInferenceContext(
     val inferencer: AbstractInferencer,
@@ -38,6 +37,9 @@ class SituatedInferenceContext(
     override fun setRequest(request: Request) {
         this.request = request
     }
+
+    val allContexts
+        get() = inMemoryContexts.keys + repositoryConnection.contextIDs.asSequence().map { it.context }
 
 
     private val sailParams = mapOf(
