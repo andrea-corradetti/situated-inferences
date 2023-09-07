@@ -1,9 +1,5 @@
 package situatedInference
 
-import com.ontotext.trree.sdk.Entities
-import com.ontotext.trree.sdk.PluginConnection
-import org.eclipse.rdf4j.model.util.Values
-import org.eclipse.rdf4j.model.vocabulary.RDF
 import kotlin.properties.Delegates
 
 internal var explainId by Delegates.notNull<Long>()
@@ -32,4 +28,5 @@ internal var graphFromEmbeddedId by Delegates.notNull<Long>()
 internal var testBlankId by Delegates.notNull<Long>()
 internal var groupsTripleId by Delegates.notNull<Long>()
 internal var expandsId by Delegates.notNull<Long>()
+internal var disagreesWith by Delegates.notNull<Long>()
 

@@ -198,7 +198,6 @@ class TestProofWithOwl2RL {
             INSERT DATA {
                 _:b sys:consistencyCheckAgainstRuleset "${sailParams["ruleset"]}"
             }
-
         """.trimIndent()
 
         createCleanRepositoryWithDefaults().use { repo ->
@@ -3226,6 +3225,211 @@ class TestProofWithOwl2RL {
         )
     }
 
+    @Test
+    fun `Inconsistency between 2 situated contexts identified`() {
+        val insertSharedKnowledge = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+        
+            INSERT DATA {
+            #######################################
+            #                                     #
+            #           SHARED KNOWLEDGE          #
+            #                                     #
+            #######################################
+        
+                    :Superman a t:Person.
+                    :ClarkKent a t:Person.
+        
+                    :LoisLane a t:Person.
+                    :MarthaKent a t:Person.
+                    :I a t:Person.
+                           
+                    t:FictionalPerson rdfs:subClassOf t:Person.
+                    t:RealPerson rdfs:subClassOf t:Person.
+                    t:FictionalPerson owl:complementOf t:RealPerson.
+                  
+        
+
+            }
+        """.trimIndent()
+
+        val insertInconsistentData = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+            
+            #########################################
+            #                                       #
+            #            NAMED GRAPHS               #
+            #                                       #
+            #    This should NEVER be consistent    #
+            #                                       #
+            #########################################
+        
+            INSERT DATA {
+                   GRAPH :LoisLanesThoughts {
+                        :Superman owl:differentFrom :ClarkKent.
+                        :Superman a t:RealPerson .
+                    }
+
+                   GRAPH :MarthaKentsThoughts {
+                       :Superman owl:sameAs :ClarkKent.
+                        :Superman a t:RealPerson .
+                    }
+
+                   GRAPH :myThoughts {
+                        :Superman owl:sameAs :ClarkKent.
+                        :Superman a t:FictionalPerson .
+                    }
+            }
+        """.trimIndent()
+
+        val SelectInconsistentWith = """
+                PREFIX conj: <https://w3id.org/conjectures/>
+                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                PREFIX : <http://a#>      
+                
+                select distinct ?s ?p ?o where {
+                    
+                     graph conj:schemas\/s {
+                        :MarthaKentsThoughts a conj:SituatedContext.
+                        :myThoughts a conj:SituatedContext.
+                        rdf4j:nil a conj:SharedKnowledgeContext.
+                     }
+                     
+                    conj:task conj:situateSchema conj:schemas\/s.
+                
+                    VALUES (?s ?p ?o) { (:MarthaKentsThoughts conj:disagreesWith :myThoughts) }
+                    ?s ?p ?o
+                }
+               
+        """.trimIndent()
+
+
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(insertSharedKnowledge).execute()
+                it.prepareUpdate(insertInconsistentData).execute()
+                it.prepareTupleQuery(SelectInconsistentWith).evaluate().map(BindingSet::toStringValueMap)
+                    .toSet()
+            }
+        }
+
+        println("result1 set ${result1.size} $result1")
+        assert(result1.size == 1)
+    }
+
+    @Test
+    fun `Asking for inconsistency check returns true`() {
+        val insertSharedKnowledge = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+        
+            INSERT DATA {
+            #######################################
+            #                                     #
+            #           SHARED KNOWLEDGE          #
+            #                                     #
+            #######################################
+        
+                    :Superman a t:Person.
+                    :ClarkKent a t:Person.
+        
+                    :LoisLane a t:Person.
+                    :MarthaKent a t:Person.
+                    :I a t:Person.
+                           
+                    t:FictionalPerson rdfs:subClassOf t:Person.
+                    t:RealPerson rdfs:subClassOf t:Person.
+                    t:FictionalPerson owl:complementOf t:RealPerson.
+                  
+        
+
+            }
+        """.trimIndent()
+
+        val insertInconsistentData = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+            
+            #########################################
+            #                                       #
+            #            NAMED GRAPHS               #
+            #                                       #
+            #    This should NEVER be consistent    #
+            #                                       #
+            #########################################
+        
+            INSERT DATA {
+                   GRAPH :LoisLanesThoughts {
+                        :Superman owl:differentFrom :ClarkKent.
+                        :Superman a t:RealPerson .
+                    }
+
+                   GRAPH :MarthaKentsThoughts {
+                       :Superman owl:sameAs :ClarkKent.
+                        :Superman a t:RealPerson .
+                    }
+
+                   GRAPH :myThoughts {
+                        :Superman owl:sameAs :ClarkKent.
+                        :Superman a t:FictionalPerson .
+                    }
+            }
+        """.trimIndent()
+
+        val SelectInconsistentWith = """
+                PREFIX conj: <https://w3id.org/conjectures/>
+                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                PREFIX : <http://a#>      
+                
+                ASK {
+                    
+                     graph conj:schemas\/s {
+                        :MarthaKentsThoughts a conj:SituatedContext.
+                        :myThoughts a conj:SituatedContext.
+                        rdf4j:nil a conj:SharedKnowledgeContext.
+                     }
+                     
+                    conj:task conj:situateSchema conj:schemas\/s.
+                
+                    VALUES (?s ?p ?o) { (:MarthaKentsThoughts conj:disagreesWith :myThoughts) }
+                    ?s ?p ?o
+                }
+               
+        """.trimIndent()
+
+
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(insertSharedKnowledge).execute()
+                it.prepareUpdate(insertInconsistentData).execute()
+                it.prepareBooleanQuery(SelectInconsistentWith).evaluate()
+            }
+        }
+
+        println("result1 $result1")
+        assert(result1)
+    }
+
     companion object {
         @JvmField
         @ClassRule
@@ -3273,15 +3477,6 @@ class TestProofWithOwl2RL {
             System.clearProperty("graphdb.home.work")
             Config.reset()
         }
-    }
-}
-
-//TODO add exception rethrow
-inline fun <R> SailRepository.use(block: (SailRepository) -> R): R {
-    return try {
-        block(this)
-    } finally {
-        this.shutDown()
     }
 }
 

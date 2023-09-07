@@ -2,8 +2,12 @@ package situatedInference
 
 import com.ontotext.trree.AbstractInferencer
 import com.ontotext.trree.AbstractRepositoryConnection
+import com.ontotext.trree.OwlimSchemaRepository
 import com.ontotext.trree.sdk.*
+import org.eclipse.rdf4j.repository.sail.SailRepository
 import org.slf4j.Logger
+import java.util.*
+import kotlin.io.path.createTempDirectory
 import kotlin.properties.Delegates
 
 class SituatedInferenceContext(
@@ -20,20 +24,42 @@ class SituatedInferenceContext(
 
     val contextToSituatedContexts = mutableMapOf<Long, MutableSet<Long>>()
 
+    val contextToRepository = mutableMapOf<Long, SailRepository>()
+
     val schemas = mutableMapOf<Long, SchemaForSituate>()
 
 
     val isInferenceEnabled
         get() = inferencer.inferStatementsFlag
 
-
     private var request: Request? = null
+
     override fun getRequest(): Request? = request
     override fun setRequest(request: Request) {
         this.request = request
     }
 
+
+    private val sailParams = mapOf(
+        "ruleset" to inferencer.ruleset,
+        "check-for-inconsistencies" to "true",
+    )
+
+    fun createCleanRepositoryWithDefaults(name: String = UUID.randomUUID().toString()) =
+        createRepository(name, sailParams)
+
+    private fun createRepository(name: String, sailParams: Map<String, String>): SailRepository {
+        val sail = OwlimSchemaRepository().apply { setParameters(sailParams) }
+        return SailRepository(sail).apply {
+            dataDir = tmpDirectory.toFile(); init()
+        }
+    }
+
     companion object {
+
+        val tmpDirectory = createTempDirectory(prefix = "situated-inferences-plugin")
+
+
         fun fromRequest(request: Request, logger: Logger? = null): SituatedInferenceContext {
 
             println("dataset ${(request as QueryRequest).dataset}")
@@ -73,6 +99,15 @@ fun MutableMap<Long, InMemoryContext>.findInAll(
         values.asSequence().filterIsInstance<Expandable>()
             .map { it.getExpansions().find(subjectId, predicateId, objectId, contextId, status) }.flatten()
     )
-
 }
+
+//TODO add exception rethrow
+inline fun <R> SailRepository.use(block: (SailRepository) -> R): R {
+    return try {
+        block(this)
+    } finally {
+        this.shutDown()
+    }
+}
+
 

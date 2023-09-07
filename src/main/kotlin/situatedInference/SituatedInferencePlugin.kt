@@ -1,6 +1,8 @@
 package situatedInference
 
+import com.ontotext.trree.StatementImpl
 import com.ontotext.trree.SystemGraphs
+import com.ontotext.trree.consistency.ConsistencyException
 import com.ontotext.trree.sdk.*
 import com.ontotext.trree.sdk.Entities.Scope.REQUEST
 import com.ontotext.trree.sdk.Entities.Scope.SYSTEM
@@ -11,6 +13,7 @@ import org.eclipse.rdf4j.model.Triple
 import org.eclipse.rdf4j.model.util.Values.*
 import org.eclipse.rdf4j.model.vocabulary.RDF
 import java.util.*
+import kotlin.reflect.KClass
 
 
 class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
@@ -37,6 +40,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     private val testBlankIri = iri(namespace + "testBlank")
     private val groupsTripleIri = iri(namespace + "groupsTriple")
     private val expandsIri = iri(namespace + "expands")
+    private val disagreesWithIri = iri(namespace + "disagreesWith")
 
     override fun getName() = "Situated-Inference"
 
@@ -54,6 +58,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         hasSituatedContextId = pluginConnection.entities.put(hasSituatedContextIri, Entities.Scope.SYSTEM)
         prefixToSituateId = pluginConnection.entities.put(prefixToSituateIri, Entities.Scope.SYSTEM)
         regexToSituateId = pluginConnection.entities.put(regexToSituateIri, Entities.Scope.SYSTEM)
+        regexToSituateId = pluginConnection.entities.put(regexToSituateIri, Entities.Scope.SYSTEM)
 
         rdfSubjectId = pluginConnection.entities.put(RDF.SUBJECT, SYSTEM)
         rdfPredicateId = pluginConnection.entities.put(RDF.PREDICATE, SYSTEM)
@@ -65,6 +70,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         testBlankId = pluginConnection.entities.put(testBlankIri, SYSTEM)
         groupsTripleId = pluginConnection.entities.put(groupsTripleIri, SYSTEM)
         expandsId = pluginConnection.entities.put(expandsIri, SYSTEM)
+        disagreesWith = pluginConnection.entities.put(disagreesWithIri, SYSTEM)
 
 //        rdfContextId = pluginConnection.entities.put(RDF., SYSTEM)
 
@@ -154,6 +160,46 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         if (predicateId == expandsId) {
             return handleExpand(objectId, subjectId, requestContext, contextId)
         }
+
+        if (predicateId == disagreesWith) {
+            if (subjectId == UNBOUND || objectId == UNBOUND) {
+                return StatementIterator.EMPTY
+            }
+
+            val checkForInconsistencies = """
+            prefix sys: <http://www.ontotext.com/owlim/system#>
+            
+            INSERT DATA {
+                _:b sys:consistencyCheckAgainstRuleset "${requestContext.inferencer.ruleset}"
+            }
+        """.trimIndent()
+
+            val statementsFromG1 = requestContext.inMemoryContexts[subjectId]?.getAll() ?:
+                pluginConnection.statements.get(0, 0, 0, subjectId).asSequence()
+
+            val statementsFromG2 = requestContext.inMemoryContexts[objectId]?.getAll() ?:
+                pluginConnection.statements.get(0, 0, 0, objectId).asSequence()
+
+            val merged = statementsFromG1 + statementsFromG2
+            val repository = requestContext.createCleanRepositoryWithDefaults()
+
+            val entityPoolConnection = requestContext.repositoryConnection.entityPoolConnection
+            try {
+                repository.use { repo ->
+                    repo.connection.use { connection ->
+                        val statements = merged.map { StatementImpl(entityPoolConnection, it.subject, it.predicate, it.`object`, it.context) }
+                        statements.forEach { connection.add(it) }
+                        connection.prepareUpdate(checkForInconsistencies).execute()
+                    }
+                }
+            } catch (e: Exception) {
+                if (isCause(e, ConsistencyException::class)) {
+                    return StatementIterator.create(subjectId, disagreesWith, objectId, contextId)
+                }
+            }
+            return StatementIterator.EMPTY
+        }
+
 
 
         if (predicateId == graphFromEmbeddedId) {
@@ -587,3 +633,8 @@ fun Quad.replaceValues(
     context = if (context == oldId) newId else context,
 )
 
+fun <T: Throwable>isCause(actual: Throwable?, expected: KClass<T>): Boolean {
+    if (actual == null) return false
+    if (expected.isInstance(actual)) return true
+    return isCause(actual.cause, expected)
+}
