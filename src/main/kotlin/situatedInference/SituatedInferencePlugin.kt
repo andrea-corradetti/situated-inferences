@@ -163,21 +163,46 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         if (predicateId == disagreesWith) {
             if (subjectId != UNBOUND && objectId != UNBOUND) {
-                return handleDisagreesWith(requestContext, subjectId, pluginConnection, objectId, contextId)
+                return handleDisagreesWith(subjectId, objectId, contextId, requestContext, pluginConnection)
             }
-            if (subjectId != UNBOUND && objectId == UNBOUND) {
+            if (subjectId != UNBOUND) {
                 val allContexts =
                     requestContext.inMemoryContexts.keys + requestContext.repositoryConnection.contextIDs.asSequence()
                         .map { it.context }
 
                 val disagreements = allContexts.asSequence().map {
-                    handleDisagreesWith(requestContext, subjectId, pluginConnection, it, contextId)?.asSequence()
+                    handleDisagreesWith(subjectId, it, contextId, requestContext, pluginConnection)?.asSequence()
                         ?: emptySequence()
                 }.flatten()
 
                 return disagreements.toStatementIterator()
 
             }
+
+            if (objectId != UNBOUND) {
+                val allContexts =
+                    requestContext.inMemoryContexts.keys + requestContext.repositoryConnection.contextIDs.asSequence()
+                        .map { it.context }
+
+                val disagreements = allContexts.asSequence().map {
+                    handleDisagreesWith(it, objectId, contextId, requestContext, pluginConnection)?.asSequence()
+                        ?: emptySequence()
+                }.flatten()
+
+                return disagreements.toStatementIterator()
+            }
+
+            val allContexts =
+                requestContext.inMemoryContexts.keys + requestContext.repositoryConnection.contextIDs.asSequence()
+                    .map { it.context }
+
+            val pairs = allContexts.pairs()
+            val disagreements = pairs.map {
+                handleDisagreesWith(it.first, it.second, contextId, requestContext, pluginConnection)?.asSequence()
+                    ?: emptySequence()
+            }.flatten()
+            return disagreements.toStatementIterator()
+
         }
 
 
@@ -302,11 +327,11 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     }
 
     private fun handleDisagreesWith(
-        requestContext: SituatedInferenceContext,
         subjectId: Long,
-        pluginConnection: PluginConnection,
         objectId: Long,
-        contextId: Long
+        contextId: Long,
+        requestContext: SituatedInferenceContext,
+        pluginConnection: PluginConnection
     ): StatementIterator? {
         val checkForInconsistencies = """
                 prefix sys: <http://www.ontotext.com/owlim/system#>
@@ -668,4 +693,13 @@ fun <T : Throwable> isCause(actual: Throwable?, expected: KClass<T>): Boolean {
     if (actual == null) return false
     if (expected.isInstance(actual)) return true
     return isCause(actual.cause, expected)
+}
+
+
+fun <E> Collection<E>.pairs(): Sequence<Pair<E, E>> = sequence {
+    this@pairs.asSequence().forEachIndexed { index, a ->
+        this@pairs.asSequence().drop(index + 1).forEach { b ->
+            yield(Pair(a, b))
+        }
+    }
 }
