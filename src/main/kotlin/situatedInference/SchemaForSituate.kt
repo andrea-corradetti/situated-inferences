@@ -17,6 +17,8 @@ class SchemaForSituate(private val requestContext: SituatedInferenceContext) {
         }
     }
 
+
+
     private val entities: PluginEntitiesAdapter = requestContext.repositoryConnection.entityPoolConnection.entities
 
     fun parse(subjectId: Long, predicateId: Long, objectId: Long): Boolean {

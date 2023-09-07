@@ -22,15 +22,27 @@ class SituatedContext(
     private val inferencer = requestContext.inferencer
     private val repositoryConnection = requestContext.repositoryConnection
 
+//    private fun notifyTasks() {
+//        requestContext.schemas.values.filter { situatedContextId in it.contextsToSituate + it.sharedContexts }.forEach {
+//            it.boundTasks.forEach { task -> task.alreadySituated -= situatedContextId }
+//        }
+//    }
+
+
 //    private val sourceContextId: Long
 //        get() = requestContext.statementIdToSingletonId[sourceId] ?: sourceId
 
 
-    fun refresh() {
+    fun reset() {
         storage.clear()
         getStatementsToSituate().forEach {
             inferLocally(it.subject, it.predicate, it.`object`, it.context)
         }
+//        notifyTasks()
+    }
+
+    fun computeClosure() {
+        getAll().forEach { inferLocally(it.subject, it.predicate, it.`object`, it.context) }
     }
 
     //TODO fix nullable
@@ -48,7 +60,7 @@ class SituatedContext(
 
 
     //FIXME same triples with different contexts are duplicated in storage (this might be good for inconsistencies)
-    private fun inferLocally(subject: Long, predicate: Long, `object`: Long, context: Long) {
+    fun inferLocally(subject: Long, predicate: Long, `object`: Long, context: Long) {
         val storageIterator = storage.bottom()
         storage.add(subject, predicate, `object`, situatedContextId, StatementIdIterator.EXPLICIT_STATEMENT_STATUS)
 //        storage.add(subject, predicate, `object`, context, StatementIdIterator.EXPLICIT_STATEMENT_STATUS)

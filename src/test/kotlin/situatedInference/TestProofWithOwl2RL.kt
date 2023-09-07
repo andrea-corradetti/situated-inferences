@@ -1605,137 +1605,6 @@ class TestProofWithOwl2RL {
         fail()
     }
 
-    @Ignore
-    @Test
-    fun `Statements are materialized`() {
-        val addNamedGraphs = """
-            PREFIX owl: <http://www.w3.org/2002/07/owl#>
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX conj: <https://w3id.org/conjectures/>
-            PREFIX : <http://a#>
-            PREFIX t: <http://t#>
-            
-
-            
-        
-            INSERT DATA {
-            
-            #######################################
-            #                                     #
-            #           SHARED KNOWLEDGE          #
-            #                                     #
-            #######################################
-        
-                    :Superman a t:Person.
-                    :ClarkKent a t:Person.
-        
-                    :LoisLane a t:Person.
-                    :MarthaKent a t:Person.
-                    :I a t:Person.
-                           
-                    t:FictionalPerson rdfs:subClassOf t:Person.
-                    t:RealPerson rdfs:subClassOf t:Person.
-                    t:FictionalPerson owl:complementOf t:RealPerson.
-                   
-                    :fly a t:flyingPower.
-                    :clingFromCeiling a t:spiderLikePower.
-        
-                    t:flyingPower rdfs:subClassOf t:supernaturalPower.
-                    t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
-                   
-                    t:SuperHero rdfs:subClassOf t:Person;
-                                   owl:onProperty :can;
-                                   owl:someValuesFrom t:supernaturalPower.
-                    t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
-                                   owl:onProperty :can;
-                                   owl:someValuesFrom t:flyingPower.   
-                    t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
-                                   owl:onProperty :can;
-                                   owl:someValuesFrom t:spiderLikePower.
-                    t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .    
-            
-                :LoisLane :thinks :LoisLanesThoughts
-                GRAPH :LoisLanesThoughts {
-                    :Superman :can :fly .
-                    :Superman owl:differentFrom :ClarkKent.
-                    :Superman a t:RealPerson .
-                }
-                
-                :MarthaKent :thinks :MarthaKentsThoughts
-                GRAPH :MarthaKentsThoughts {
-                    :Superman :can :fly .
-                    :Superman owl:sameAs :ClarkKent.
-                    :Superman a t:RealPerson .
-                }
-                
-                :I :thinks :myThoughts
-                GRAPH :myThoughts {
-                    :Superman :can :clingFromCeiling .
-                    :Superman owl:sameAs :ClarkKent.
-                    :Superman a t:FictionalPerson .
-                }
-            }
-        """.trimIndent()
-
-        val querySituated = """
-            PREFIX conj: <https://w3id.org/conjectures/>
-            PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
-            PREFIX : <http://a#>
-            
-            select ?s ?p ?o where {
-            
-                conj:task conj:situateSchema conj:schemas\/thoughts.
-                conj:task conj:appendToContexts "-situated".
-            
-                graph conj:schemas\/thoughts {
-                    rdf4j:nil a conj:SharedKnowledgeContext.
-                    :LoisLanesThoughts a conj:SituatedContext.
-                    :MarthaKentsThoughts a conj:SituatedContext.
-                    :myThoughts a conj:SituatedContext.
-                }
-            
-                #conj:task conj:hasSituatedGraph ?sg.
-                
-                VALUES ?g1 { :LoisLanesThoughts-situated }
-            
-                # conj:spec conj:situatedWithSuffix "-situated".
-            
-                graph ?g1 {
-                    ?s ?p ?o .
-                }           
-            }
-        """.trimIndent()
-        val queryMaterialized = """
-            PREFIX conj: <https://w3id.org/conjectures/>
-            PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
-            PREFIX : <http://a#>
-            
-            select * where {
-                    ?s ?p ?o .     
-            }
-        """.trimIndent()
-
-        val (result1, result2) = createCleanRepositoryWithDefaults().use { repo ->
-            repo.connection.use {
-                it.prepareUpdate(addNamedGraphs).execute()
-                arrayOf(
-                    it.prepareTupleQuery(querySituated).evaluate().map(BindingSet::toStringValueMap).toSet(),
-                    it.prepareTupleQuery(queryMaterialized).evaluate().map(BindingSet::toStringValueMap).toSet()
-                )
-            }
-        }
-        println("result1 set ${result1.size} $result1")
-        println("result2 set ${result2.size} $result2")
-
-
-        assert(result2.containsAll(result1)) {
-            println("result 2 does not contain ${(result1 - result2).size}  ${result1 - result2}")
-        }
-
-        assert(result1.isNotEmpty())
-        assert(result2.isNotEmpty())
-    }
 
     @Test
     fun `Reified statement is represented correctly as singleton`() {
@@ -3217,6 +3086,7 @@ class TestProofWithOwl2RL {
                 #######################################
         
                 :Superman a t:Person.
+                :Flash a t:Person.
                 :ClarkKent a t:Person.
     
                 :LoisLane a t:Person.
@@ -3250,6 +3120,8 @@ class TestProofWithOwl2RL {
                 #                                     #
                 #######################################
     
+            :I :thinks << :Flash :can :clingFromCeiling >>.
+   
             :I :thinks << :Superman :can :clingFromCeiling >>.
                 
             }  
@@ -3330,7 +3202,26 @@ class TestProofWithOwl2RL {
                     "object" to "https://w3id.org/conjectures/situations/I-thinks",
                     "context" to "http://www.ontotext.com/explicit"
                 )
-
+            )
+        )
+        assert(
+            result1.contains(
+                mapOf(
+                    "subject" to "http://a#I",
+                    "predicate" to "http://a#thinks",
+                    "object" to "<<http://a#Superman http://www.w3.org/1999/02/22-rdf-syntax-ns#type http://t#SpiderSuperHero>>",
+                    "context" to "http://www.ontotext.com/explicit"
+                )
+            )
+        )
+        assert(
+            result1.contains(
+                mapOf(
+                    "subject" to "http://a#I",
+                    "predicate" to "http://a#thinks",
+                    "object" to "<<http://a#Flash http://www.w3.org/1999/02/22-rdf-syntax-ns#type http://t#SpiderSuperHero>>",
+                    "context" to "http://www.ontotext.com/explicit"
+                )
             )
         )
     }

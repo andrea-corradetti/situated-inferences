@@ -13,7 +13,7 @@ class SituateTask(val taskId: Long, private val requestContext: SituatedInferenc
     private val entities: PluginEntitiesAdapter = requestContext.repositoryConnection.entityPoolConnection.entities
 
     var schemaId: Long? = null
-    val schema
+    private val schema
         get() = schemaId?.let { requestContext.schemas[schemaId] }
 
     var alreadySituated = mutableSetOf<Long>()
@@ -39,12 +39,13 @@ class SituateTask(val taskId: Long, private val requestContext: SituatedInferenc
             mainContextId = contextId,
             additionalContexts = schema.sharedContexts,
             requestContext
-        ).apply { refresh() }
+        ).apply { reset() }
     }
 
     fun createSituations() {
         (schema!!.contextsToSituate - alreadySituated).forEach { contextId ->
             val situation = createSituationOfContext(contextId)
+            (requestContext.contextToSituatedContexts.getOrPut(contextId) { mutableSetOf() }) += situation.quotableId
             requestContext.inMemoryContexts[situation.quotableId] = situation
             createdSituationsIds.add(situation.quotableId)
             alreadySituated.add(contextId)

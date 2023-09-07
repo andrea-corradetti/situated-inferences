@@ -18,6 +18,8 @@ class SituatedInferenceContext(
     val situateTasks = mutableMapOf<Long, SituateTask>()
     val explainTasks = mutableMapOf<Long, ExplainTask>()
 
+    val contextToSituatedContexts = mutableMapOf<Long, MutableSet<Long>>()
+
     val schemas = mutableMapOf<Long, SchemaForSituate>()
 
 

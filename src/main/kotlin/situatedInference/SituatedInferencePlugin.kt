@@ -152,7 +152,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         }
 
         if (predicateId == expandsId) {
-            return handleExpanse(objectId, subjectId, requestContext, contextId)
+            return handleExpand(objectId, subjectId, requestContext, contextId)
         }
 
 
@@ -275,7 +275,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         return (statements + quotingSubject + quotingObject).toStatementIterator()
     }
 
-    private fun handleExpanse(
+    private fun handleExpand(
         objectId: Long,
         subjectId: Long,
         requestContext: SituatedInferenceContext,
@@ -297,6 +297,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         return StatementIterator.create(expanded, expandsId, graphToExpand, contextId)
     }
 
+    //TODO on add, should notify of change SituatedContexts in map
     private fun handleGroupsTriple(
         subjectId: Long,
         objectId: Long,
@@ -319,6 +320,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             pluginConnection.entities.resolve(triple.predicate),
             pluginConnection.entities.resolve(triple.`object`)
         )
+        (requestContext.inMemoryContexts[subjectId] as? SituatedContext)?.computeClosure()
         return StatementIterator.create(subjectId, groupsTripleId, objectId, contextId)
     }
 
@@ -393,10 +395,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         task.createSituationsIfReady()
 
-//        val sequence = sequenceOf(Quad(taskId, situateSchemaId, schemaId, contextId)) +
-//                task.createdSituationsIds.map { Quad(taskId, hasSituatedContextId, it, 0) }.asSequence()
-//
-//        return sequence.toStatementIterator()
         return StatementIterator.create(taskId, situateSchemaId, schemaId, contextId)
     }
 
@@ -515,7 +513,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         requestContext.inMemoryContexts[situationId] = SituatedContext(
             situationId, sourceId, objectsIds.first(), objectsIds.toSet(), requestContext
-        ).apply { refresh() }
+        ).apply { reset() }
 
         return StatementIterator.create(
             objectsIds.map { longArrayOf(situationId, situateId, it, 0L) }.toTypedArray()
