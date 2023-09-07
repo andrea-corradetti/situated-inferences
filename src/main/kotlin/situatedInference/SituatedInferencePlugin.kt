@@ -162,42 +162,22 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         }
 
         if (predicateId == disagreesWith) {
-            if (subjectId == UNBOUND || objectId == UNBOUND) {
-                return StatementIterator.EMPTY
+            if (subjectId != UNBOUND && objectId != UNBOUND) {
+                return handleDisagreesWith(requestContext, subjectId, pluginConnection, objectId, contextId)
             }
+            if (subjectId != UNBOUND && objectId == UNBOUND) {
+                val allContexts =
+                    requestContext.inMemoryContexts.keys + requestContext.repositoryConnection.contextIDs.asSequence()
+                        .map { it.context }
 
-            val checkForInconsistencies = """
-            prefix sys: <http://www.ontotext.com/owlim/system#>
-            
-            INSERT DATA {
-                _:b sys:consistencyCheckAgainstRuleset "${requestContext.inferencer.ruleset}"
+                val disagreements = allContexts.asSequence().map {
+                    handleDisagreesWith(requestContext, subjectId, pluginConnection, it, contextId)?.asSequence()
+                        ?: emptySequence()
+                }.flatten()
+
+                return disagreements.toStatementIterator()
+
             }
-        """.trimIndent()
-
-            val statementsFromG1 = requestContext.inMemoryContexts[subjectId]?.getAll() ?:
-                pluginConnection.statements.get(0, 0, 0, subjectId).asSequence()
-
-            val statementsFromG2 = requestContext.inMemoryContexts[objectId]?.getAll() ?:
-                pluginConnection.statements.get(0, 0, 0, objectId).asSequence()
-
-            val merged = statementsFromG1 + statementsFromG2
-            val repository = requestContext.createCleanRepositoryWithDefaults()
-
-            val entityPoolConnection = requestContext.repositoryConnection.entityPoolConnection
-            try {
-                repository.use { repo ->
-                    repo.connection.use { connection ->
-                        val statements = merged.map { StatementImpl(entityPoolConnection, it.subject, it.predicate, it.`object`, it.context) }
-                        statements.forEach { connection.add(it) }
-                        connection.prepareUpdate(checkForInconsistencies).execute()
-                    }
-                }
-            } catch (e: Exception) {
-                if (isCause(e, ConsistencyException::class)) {
-                    return StatementIterator.create(subjectId, disagreesWith, objectId, contextId)
-                }
-            }
-            return StatementIterator.EMPTY
         }
 
 
@@ -319,6 +299,57 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             (requestContext.inMemoryContexts[objectId] as? Quotable)?.getQuotingAsObject()?.getAll() ?: emptySequence()
 
         return (statements + quotingSubject + quotingObject).toStatementIterator()
+    }
+
+    private fun handleDisagreesWith(
+        requestContext: SituatedInferenceContext,
+        subjectId: Long,
+        pluginConnection: PluginConnection,
+        objectId: Long,
+        contextId: Long
+    ): StatementIterator? {
+        val checkForInconsistencies = """
+                prefix sys: <http://www.ontotext.com/owlim/system#>
+                
+                INSERT DATA {
+                    _:b sys:consistencyCheckAgainstRuleset "${requestContext.inferencer.ruleset}"
+                }
+            """.trimIndent()
+
+        val statementsFromG1 =
+            requestContext.inMemoryContexts[subjectId]?.getAll() ?: pluginConnection.statements.get(0, 0, 0, subjectId)
+                .asSequence()
+
+        val statementsFromG2 =
+            requestContext.inMemoryContexts[objectId]?.getAll() ?: pluginConnection.statements.get(0, 0, 0, objectId)
+                .asSequence()
+
+        val merged = statementsFromG1 + statementsFromG2
+        val repository = requestContext.createCleanRepositoryWithDefaults()
+
+        val entityPoolConnection = requestContext.repositoryConnection.entityPoolConnection
+        try {
+            repository.use { repo ->
+                repo.connection.use { connection ->
+                    val statements = merged.map {
+                        StatementImpl(
+                            entityPoolConnection,
+                            it.subject,
+                            it.predicate,
+                            it.`object`,
+                            it.context
+                        )
+                    }
+                    statements.forEach { connection.add(it) }
+                    connection.prepareUpdate(checkForInconsistencies).execute()
+                }
+            }
+        } catch (e: Exception) {
+            if (isCause(e, ConsistencyException::class)) {
+                return StatementIterator.create(subjectId, disagreesWith, objectId, contextId)
+            }
+        }
+        return StatementIterator.EMPTY
     }
 
     private fun handleExpand(
@@ -633,7 +664,7 @@ fun Quad.replaceValues(
     context = if (context == oldId) newId else context,
 )
 
-fun <T: Throwable>isCause(actual: Throwable?, expected: KClass<T>): Boolean {
+fun <T : Throwable> isCause(actual: Throwable?, expected: KClass<T>): Boolean {
     if (actual == null) return false
     if (expected.isInstance(actual)) return true
     return isCause(actual.cause, expected)
