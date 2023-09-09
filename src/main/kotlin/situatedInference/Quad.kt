@@ -2,6 +2,9 @@ package situatedInference
 
 import com.ontotext.trree.StatementIdIterator
 import com.ontotext.trree.StatementIdIterator.*
+import com.ontotext.trree.StatementImpl
+import com.ontotext.trree.entitypool.EntityPoolConnection
+import org.eclipse.rdf4j.model.Statement
 
 data class Quad(
     val subject: Long,
@@ -52,6 +55,8 @@ data class Quad(
         (subject == other.subject) && (predicate == other.predicate) && (`object` == other.`object`)
 
     fun asTriple() = Triple(subject, predicate, `object`)
+
+    fun asStatement(entityPoolConnection: EntityPoolConnection): Statement = StatementImpl(entityPoolConnection, subject, predicate, `object`, context)
 }
 
 

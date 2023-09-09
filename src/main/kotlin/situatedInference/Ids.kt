@@ -29,4 +29,4 @@ internal var testBlankId by Delegates.notNull<Long>()
 internal var groupsTripleId by Delegates.notNull<Long>()
 internal var expandsId by Delegates.notNull<Long>()
 internal var disagreesWith by Delegates.notNull<Long>()
-
+internal var checkConsistecy by Delegates.notNull<Long>()

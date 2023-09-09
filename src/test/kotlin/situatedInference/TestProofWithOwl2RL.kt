@@ -29,9 +29,16 @@ class TestProofWithOwl2RL {
             PREFIX conj: <https://w3id.org/conjectures/>
             
             select distinct ?s ?p ?o where {
-                conj:situation conj:situate (<urn:family>) .
+            
+                graph conj:schemas\/s {
+                    <urn:family> a conj:SituatedContext.
+                    rdf4j:nil a conj:SharedKnowledgeContext.
+                 }
+                     
+                conj:task conj:situateSchema conj:schemas\/s.
+            
                 
-                graph conj:situation {
+                graph <urn:family> {
                     ?s ?p ?o .
                 }
             }
@@ -51,9 +58,14 @@ class TestProofWithOwl2RL {
             PREFIX conj: <https://w3id.org/conjectures/>
             
             select distinct ?s ?p ?o where {
-                conj:situation conj:situate ( <http://rdf4j.org/schema/rdf4j#nil> <urn:family> )  .
-                
-                graph conj:situation {
+               graph conj:schemas\/s {
+                    <urn:family> a conj:SituatedContext.
+                    rdf4j:nil a conj:SharedKnowledgeContext.
+                 }
+                     
+                conj:task conj:situateSchema conj:schemas\/s.
+            
+                graph <urn:family> {
                     ?s ?p ?o .
                 }
             }
@@ -70,9 +82,13 @@ class TestProofWithOwl2RL {
             PREFIX conj: <https://w3id.org/conjectures/>
             
             select distinct ?s ?p ?o where {
-                conj:situation conj:situate (<http://rdf4j.org/schema/rdf4j#nil>)  .
+                 conj:task conj:situateSchema conj:schemas\/s.
+            
+               graph conj:schemas\/s {
+                    rdf4j:nil a conj:SituatedContext.
+                 }
                 
-                graph conj:situation {
+                graph rdf4j:nil {
                     ?s ?p ?o 
                 }
             }
@@ -100,9 +116,16 @@ class TestProofWithOwl2RL {
             }
         }
 
+        println("result1 ${result1.size} $result1")
+        println("result2 ${result2.size} $result2")
+        println("result3 ${result3.size} $result3")
+
+
         assert(result1 == result2) {
             println("result1 and result2 are different: ${result1 symmetricDifference result2} ")
         }
+
+
 
         assert(result2 == result3) {
             println("result2 and result3 are different: ${result2 symmetricDifference result3} ")
@@ -2722,107 +2745,6 @@ class TestProofWithOwl2RL {
             }
         )
     }
-    @Test
-    fun `Rdfstar graph is situated correctly`() {
-        val addReifiedStatement = """
-            PREFIX owl: <http://www.w3.org/2002/07/owl#>
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX conj: <https://w3id.org/conjectures/>
-            PREFIX : <http://a#>
-            PREFIX t: <http://t#>
-            
-            INSERT DATA {
-            
-                #######################################
-                #                                     #
-                #           SHARED KNOWLEDGE          #
-                #                                     #
-                #######################################
-        
-                :Superman a t:Person.
-                :ClarkKent a t:Person.
-    
-                :LoisLane a t:Person.
-                :MarthaKent a t:Person.
-                :I a t:Person.
-                       
-                t:FictionalPerson rdfs:subClassOf t:Person.
-                t:RealPerson rdfs:subClassOf t:Person.
-                t:FictionalPerson owl:complementOf t:RealPerson.
-               
-                :fly a t:flyingPower.
-                :clingFromCeiling a t:spiderLikePower.
-    
-                t:flyingPower rdfs:subClassOf t:supernaturalPower.
-                t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
-               
-                t:SuperHero rdfs:subClassOf t:Person;
-                               owl:onProperty :can;
-                               owl:someValuesFrom t:supernaturalPower.
-                t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
-                               owl:onProperty :can;
-                               owl:someValuesFrom t:flyingPower.   
-                t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
-                               owl:onProperty :can;
-                               owl:someValuesFrom t:spiderLikePower.
-                t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .    
-                    
-                #######################################
-                #                                     #
-                #           RDF-STAR                  #
-                #                                     #
-                #######################################
-    
-            :I :thinks << :Superman :can :clingFromCeiling >>.
-                
-            }  
-        """.trimIndent()
-
-        val getStatementsQuotingEmbedded = """
-                PREFIX conj: <https://w3id.org/conjectures/>
-                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
-                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-                
-                PREFIX : <http://a#>      
-                        select distinct ?subject ?predicate ?object where {
-                            :I :thinks ?triple.
-                            
-                            bind (conj:situations\/I-thinks as ?g)
-                            
-                            ?g conj:graphFromEmbedded ?triple.
-                            
-                            ?situation conj:situate (?g rdf4j:nil)
-                            
-                            graph ?situation {
-                                ?subject ?predicate ?object.
-                            }
-                        }
-                   
-        """.trimIndent()
-
-
-        val result1 = createCleanRepositoryWithDefaults().use { repo ->
-            repo.connection.use {
-                it.prepareUpdate(addReifiedStatement).execute()
-                it.prepareTupleQuery(getStatementsQuotingEmbedded).evaluate().map(BindingSet::toStringValueMap)
-                    .toSet()
-            }
-        }
-        println("result1 set ${result1.size} $result1")
-
-        assert(result1.isNotEmpty())
-        assert(
-            result1.contains(
-                mapOf(
-                    "subject" to "http://a#Superman",
-                    "predicate" to "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                    "object" to "http://t#SpiderSuperHero"
-                )
-            )
-        )
-    }
-
 
     @Test
     fun `Rdfstar graph is situated correctly with schema`() {
@@ -3402,7 +3324,6 @@ class TestProofWithOwl2RL {
                 PREFIX : <http://a#>      
                 
                 ASK {
-                    
                      graph conj:schemas\/s {
                         :MarthaKentsThoughts a conj:SituatedContext.
                         :myThoughts a conj:SituatedContext.
@@ -3737,6 +3658,52 @@ class TestProofWithOwl2RL {
 
         println("result1 ${result1.size} $result1")
         assert(result1.isNotEmpty())
+    }
+
+      @Test
+    fun `If a context is inconsistent, it disagrees with itself`() {
+          val insertInconsistentData = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+            
+            INSERT DATA {
+
+                   GRAPH :InconsistentThoughts {
+                        :Superman owl:differentFrom :ClarkKent.
+                        :Superman a t:RealPerson .
+                        :Superman owl:sameAs :ClarkKent.
+                        :Superman a t:FictionalPerson .
+                    }
+            }
+        """.trimIndent()
+
+          val checkInconsistentGraph = """
+                PREFIX conj: <https://w3id.org/conjectures/>
+                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                PREFIX : <http://a#>      
+                
+                ASK {
+                    :InconsistentThoughts conj:disagreesWith :InconsistentThoughts.
+                }
+               
+        """.trimIndent()
+
+
+
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(insertInconsistentData).execute()
+                it.prepareBooleanQuery(checkInconsistentGraph).evaluate()
+            }
+        }
+
+        println("result1 $ $result1")
+        assert(result1)
     }
 
     companion object {

@@ -1,8 +1,6 @@
 package situatedInference
 
-import com.ontotext.trree.StatementImpl
 import com.ontotext.trree.SystemGraphs
-import com.ontotext.trree.consistency.ConsistencyException
 import com.ontotext.trree.sdk.*
 import com.ontotext.trree.sdk.Entities.Scope.REQUEST
 import com.ontotext.trree.sdk.Entities.Scope.SYSTEM
@@ -41,6 +39,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     private val groupsTripleIri = iri(namespace + "groupsTriple")
     private val expandsIri = iri(namespace + "expands")
     private val disagreesWithIri = iri(namespace + "disagreesWith")
+    private val checkConsistecyIri = iri(namespace + "checkConsistecy")
 
     override fun getName() = "Situated-Inference"
 
@@ -71,6 +70,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         groupsTripleId = pluginConnection.entities.put(groupsTripleIri, SYSTEM)
         expandsId = pluginConnection.entities.put(expandsIri, SYSTEM)
         disagreesWith = pluginConnection.entities.put(disagreesWithIri, SYSTEM)
+        checkConsistecy = pluginConnection.entities.put(checkConsistecyIri, SYSTEM)
 
 //        rdfContextId = pluginConnection.entities.put(RDF., SYSTEM)
 
@@ -162,22 +162,8 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         }
 
         if (predicateId == disagreesWith) {
-
-            val pairs = when {
-                subjectId == UNBOUND && objectId == UNBOUND -> requestContext.allContexts.pairs()
-                subjectId.isBound() -> requestContext.allContexts.map { Pair(subjectId, it) }.asSequence()
-                objectId.isBound() -> requestContext.allContexts.map { Pair(it, objectId)}.asSequence()
-                else -> sequenceOf(Pair(subjectId, objectId))
-            }
-
-            val disagreements = pairs.map {
-                handleDisagreesWith(it.first, it.second, contextId, requestContext, pluginConnection)?.asSequence()
-                    ?: emptySequence()
-            }.flatten()
-            return disagreements.toStatementIterator()
-
+            return handleDisagreesWith(subjectId, objectId, requestContext, contextId, pluginConnection)
         }
-
 
 
         if (predicateId == graphFromEmbeddedId) {
@@ -302,17 +288,36 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     private fun handleDisagreesWith(
         subjectId: Long,
         objectId: Long,
+        requestContext: SituatedInferenceContext,
+        contextId: Long,
+        pluginConnection: PluginConnection
+    ): StatementIterator {
+        val pairs = when {
+            subjectId == UNBOUND && objectId == UNBOUND -> requestContext.allContexts.pairs()
+            subjectId != UNBOUND && objectId != UNBOUND -> sequenceOf(Pair(subjectId, objectId))
+            subjectId.isBound() -> requestContext.allContexts.map { Pair(subjectId, it) }.asSequence()
+            objectId.isBound() -> requestContext.allContexts.map { Pair(it, objectId) }.asSequence()
+            else -> emptySequence()
+        }
+
+        val disagreements = pairs.map {
+            findDisagreements(it.first, it.second, contextId, requestContext, pluginConnection)?.asSequence()
+                ?: emptySequence()
+        }.flatten()
+        return disagreements.toStatementIterator()
+    }
+
+    private fun findDisagreements(
+        subjectId: Long,
+        objectId: Long,
         contextId: Long,
         requestContext: SituatedInferenceContext,
         pluginConnection: PluginConnection
     ): StatementIterator? {
-        val checkForInconsistencies = """
-                prefix sys: <http://www.ontotext.com/owlim/system#>
-                
-                INSERT DATA {
-                    _:b sys:consistencyCheckAgainstRuleset "${requestContext.inferencer.ruleset}"
-                }
-            """.trimIndent()
+        val inconsistencies = requestContext.getIdInconsistent(subjectId) + requestContext.getIdInconsistent(objectId)
+        if (inconsistencies.any()) {
+            return inconsistencies.toStatementIterator()
+        }
 
         val statementsFromG1 =
             requestContext.inMemoryContexts[subjectId]?.getAll() ?: pluginConnection.statements.get(0, 0, 0, subjectId)
@@ -322,32 +327,14 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             requestContext.inMemoryContexts[objectId]?.getAll() ?: pluginConnection.statements.get(0, 0, 0, objectId)
                 .asSequence()
 
-        val merged = statementsFromG1 + statementsFromG2
-        val repository = requestContext.createCleanRepositoryWithDefaults()
-
-        val entityPoolConnection = requestContext.repositoryConnection.entityPoolConnection
-        try {
-            repository.use { repo ->
-                repo.connection.use { connection ->
-                    val statements = merged.map {
-                        StatementImpl(
-                            entityPoolConnection,
-                            it.subject,
-                            it.predicate,
-                            it.`object`,
-                            it.context
-                        )
-                    }
-                    statements.forEach { connection.add(it) }
-                    connection.prepareUpdate(checkForInconsistencies).execute()
-                }
-            }
-        } catch (e: Exception) {
-            if (isCause(e, ConsistencyException::class)) {
-                return StatementIterator.create(subjectId, disagreesWith, objectId, contextId)
-            }
+        val disagrees = requestContext.pairToDisagrees.getOrPut(Pair(subjectId, objectId)) {
+            requestContext.statementsDisagree(statementsFromG1 + statementsFromG2)
         }
-        return StatementIterator.EMPTY
+
+        return if (disagrees)
+            StatementIterator.create(subjectId, disagreesWith, objectId, 0)
+        else
+            StatementIterator.EMPTY
     }
 
     private fun handleExpand(
@@ -431,28 +418,17 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         val singletonId = if (objectId != UNBOUND) objectId else entities.put(iri(name), REQUEST)
 
         requestContext.inMemoryContexts[singletonId] =
-            Singleton(statementId, Quad(reifiedSubject, reifiedPredicate, reifiedObject, singletonId), requestContext)
+            Singleton(
+                statementId,
+                Quad(reifiedSubject, reifiedPredicate, reifiedObject, singletonId),
+                requestContext
+            )
 
         requestContext.statementIdToSingletonId[statementId] = singletonId
 
         return StatementIterator.create(statementId, asSingletonId, singletonId, contextId)
     }
 
-
-//    private fun handleAppendToContexts(
-//        subjectId: Long,
-//        predicateId: Long,
-//        objectId: Long,
-//        contextId: Long,
-//        requestContext: SituatedInferenceContext,
-//        pluginConnection: PluginConnection
-//    ): StatementIterator? {
-//        val taskId = if (subjectId.isBound()) subjectId else return  StatementIterator.create(subjectId, predicateId, objectId, contextId)
-//        requestContext.situateTasks.getOrPut(taskId) { SituateTask(requestContext) }
-//            .apply { suffixForNewNames = pluginConnection.entities[objectId].stringValue() }
-//
-//        return StatementIterator.create(taskId, predicateId, objectId, contextId)
-//    }
 
     private fun handleSituateSchema(
         subjectId: Long,
@@ -472,6 +448,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
 
         return StatementIterator.create(taskId, situateSchemaId, schemaId, contextId)
     }
+
 
     private fun handleSchemaStatement(
         subjectId: Long,
@@ -564,13 +541,14 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         val contextsInRepository by lazy {
             requestContext.repositoryConnection.contextIDs.asSequence().map { it.context }
         }
-        if (objectsIds.any { it !in requestContext.inMemoryContexts.keys && it != -36L && it !in contextsInRepository }) {
+        if (objectsIds.any { it !in requestContext.inMemoryContexts.keys && it != SystemGraphs.RDF4J_NIL.id.toLong() && it !in contextsInRepository }) {
             return StatementIterator.EMPTY
         }
 
         objectsIds.map { pluginConnection.entities[it] }.filter { !it.isBNode && !it.isIRI }.let { values ->
             if (values.isNotEmpty()) {
-                val message = values.joinToString("\n") { "${it.stringValue()} in object list isn't a valid graph." }
+                val message =
+                    values.joinToString("\n") { "${it.stringValue()} in object list isn't a valid graph." }
                 throw PluginException(message)
             }
         }
@@ -662,7 +640,7 @@ fun Quad.replaceValues(
     context = if (context == oldId) newId else context,
 )
 
-fun <T : Throwable> isCause(actual: Throwable?, expected: KClass<T>): Boolean {
+tailrec fun <T : Throwable> isCause(actual: Throwable?, expected: KClass<T>): Boolean {
     if (actual == null) return false
     if (expected.isInstance(actual)) return true
     return isCause(actual.cause, expected)
@@ -676,3 +654,9 @@ fun <E> Collection<E>.pairs(): Sequence<Pair<E, E>> = sequence {
         }
     }
 }
+
+val deleteAll = """
+            DELETE WHERE {
+              ?s ?p ?o .
+            }
+        """.trimIndent()

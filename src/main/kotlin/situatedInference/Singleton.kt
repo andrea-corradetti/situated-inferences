@@ -6,7 +6,8 @@ data class Singleton(
     val reifiedStatementId: Long,
     val singletonQuad: Quad,
     private val requestContext: SituatedInferenceContext
-) : InMemoryContext, Quotable by QuotableImpl(reifiedStatementId, singletonQuad.context, requestContext) {
+) : InMemoryContext, Quotable by QuotableImpl(reifiedStatementId, singletonQuad.context, requestContext),
+    CheckableForConsistency {
 
     override fun find(
         subjectId: Long,
@@ -24,5 +25,7 @@ data class Singleton(
     }
 
     override fun getAll(): Sequence<Quad> = sequenceOf(singletonQuad)
+
+    override fun getInconsistencies(): Sequence<Quad> = emptySequence()
 }
 

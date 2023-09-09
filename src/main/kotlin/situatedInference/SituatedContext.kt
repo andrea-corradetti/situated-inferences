@@ -3,8 +3,12 @@ package situatedInference
 import com.ontotext.trree.AbstractInferencerTask
 import com.ontotext.trree.StatementIdIterator
 import com.ontotext.trree.SwitchableInferencer
+import com.ontotext.trree.SystemGraphs
+import com.ontotext.trree.consistency.ConsistencyException
 import com.ontotext.trree.sdk.Entities
+import com.ontotext.trree.sdk.Entities.UNBOUND
 import com.ontotext.trree.sdk.PluginException
+import org.eclipse.rdf4j.repository.sail.SailRepository
 import org.slf4j.LoggerFactory
 
 
@@ -16,7 +20,8 @@ class SituatedContext(
     private val requestContext: SituatedInferenceContext
 ) : ContextWithStorage(),
     Quotable by QuotableImpl(sourceId, situatedContextId, requestContext),
-    AbstractInferencerTask {
+    AbstractInferencerTask,
+    CheckableForConsistency {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private val inferencer = requestContext.inferencer
@@ -50,9 +55,9 @@ class SituatedContext(
         (additionalContexts + mainContextId!!).asSequence().map(::replaceDefaultGraphId).map { contextInScope ->
             requestContext.inMemoryContexts[contextInScope]?.getAll()
                 ?: requestContext.repositoryConnection.getStatements(
-                    Entities.UNBOUND,
-                    Entities.UNBOUND,
-                    Entities.UNBOUND,
+                    UNBOUND,
+                    UNBOUND,
+                    UNBOUND,
                     contextInScope,
                     excludeDeletedHiddenInferred
                 ).asSequence()
@@ -207,4 +212,56 @@ class SituatedContext(
     ) {
         throw PluginException("Not implemented for Situated-Inferences Plugin")
     }
+
+    override fun getInconsistencies(): Sequence<Quad> {
+        return (additionalContexts + mainContextId).filterNotNull().map(::replaceDefaultGraphId)
+            .fold(sequenceOf()) { acc, l ->
+                acc + if (l in requestContext.repoContexts || SystemGraphs.isSystemGraph(l)) {
+                    requestContext.getStatementForInconsistentRealContext(l)
+                } else {
+                    (requestContext.inMemoryContexts[l] as? CheckableForConsistency)?.getInconsistencies()
+                        ?: emptySequence()
+                }
+            }
+    }
+}
+
+
+fun SituatedInferenceContext.getIdInconsistent(contextId: Long): Sequence<Quad> {
+    return (inMemoryContexts[contextId] as? CheckableForConsistency)?.getInconsistencies()
+        ?: getStatementForInconsistentRealContext(contextId)
+}
+
+fun SituatedInferenceContext.getStatementForInconsistentRealContext(contextId: Long): Sequence<Quad> {
+    val isInconsistent = realContextIdToIsConsistent.getOrPut(contextId) {
+        val statements =
+            repositoryConnection.getStatements(UNBOUND, UNBOUND, UNBOUND, contextId, 0).asSequence()
+        val statementsToInsert =
+            if (contextId.toInt() == SystemGraphs.EXPLICIT_GRAPH.id) statements.map { it.withField(context = 0) } else statements
+        return@getOrPut statementsDisagree(statementsToInsert)
+    }
+
+    return if (isInconsistent)
+        sequenceOf(Quad(contextId, disagreesWith, contextId, 0))
+    else
+        emptySequence()
+}
+
+fun SituatedInferenceContext.isRepositoryConsistent(repository: SailRepository): Boolean {
+    val checkForInconsistencies = """
+                prefix sys: <http://www.ontotext.com/owlim/system#>
+                
+                INSERT DATA {
+                    _:b sys:consistencyCheckAgainstRuleset "${inferencer.ruleset}"
+                }
+            """.trimIndent()
+    try {
+        repository.connection.use { it.prepareUpdate(checkForInconsistencies).execute() }
+    } catch (e: Exception) {
+        if (isCause(e, ConsistencyException::class)) {
+            return true
+        }
+        throw e
+    }
+    return false
 }

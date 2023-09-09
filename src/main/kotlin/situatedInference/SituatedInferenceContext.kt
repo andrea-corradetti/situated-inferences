@@ -3,6 +3,7 @@ package situatedInference
 import com.ontotext.trree.AbstractInferencer
 import com.ontotext.trree.AbstractRepositoryConnection
 import com.ontotext.trree.OwlimSchemaRepository
+import com.ontotext.trree.consistency.ConsistencyException
 import com.ontotext.trree.sdk.*
 import org.eclipse.rdf4j.repository.sail.SailRepository
 import org.slf4j.Logger
@@ -27,6 +28,11 @@ class SituatedInferenceContext(
 
     val schemas = mutableMapOf<Long, SchemaForSituate>()
 
+    private val sailParams = mapOf(
+        "ruleset" to inferencer.ruleset,
+        "check-for-inconsistencies" to "true",
+    )
+
 
     val isInferenceEnabled
         get() = inferencer.inferStatementsFlag
@@ -39,29 +45,43 @@ class SituatedInferenceContext(
     }
 
     val allContexts
-        get() = inMemoryContexts.keys + repositoryConnection.contextIDs.asSequence().map { it.context }
+        get() = inMemoryContexts.keys + repoContexts
+
+    val repoContexts
+        get() = repositoryConnection.contextIDs.asSequence().map { it.context }
+
+    val realContextIdToIsConsistent = mutableMapOf<Long, Boolean>()
+    val inMemoryContextIdToIsConsistent = mutableMapOf<Long, Boolean>()
+    val pairToDisagrees = mutableMapOf<Pair<Long, Long>, Boolean>()
 
 
-    private val sailParams = mapOf(
-        "ruleset" to inferencer.ruleset,
-        "check-for-inconsistencies" to "true",
-    )
+    fun statementsDisagree(statements: Sequence<Quad>): Boolean {
+        createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use { conn ->
+                return try {
+                    statements.forEach {
+                        conn.add(it.asStatement(repositoryConnection.entityPoolConnection))
+                    }
+                    false
+                } catch (e: Exception) {
+                    isCause(e, ConsistencyException::class) || throw e
+                }
+            }
+        }
+    }
 
-    fun createCleanRepositoryWithDefaults(name: String = UUID.randomUUID().toString()) =
+    private fun createCleanRepositoryWithDefaults(name: String = UUID.randomUUID().toString()) =
         createRepository(name, sailParams)
 
     private fun createRepository(name: String, sailParams: Map<String, String>): SailRepository {
         val sail = OwlimSchemaRepository().apply { setParameters(sailParams) }
         return SailRepository(sail).apply {
-            dataDir = tmpDirectory.toFile(); init()
+            dataDir = tmpFolder.toFile(); init()
         }
     }
 
     companion object {
-
-        val tmpDirectory = createTempDirectory(prefix = "situated-inferences-plugin")
-
-
+        val tmpFolder = createTempDirectory(prefix = "situated-inferences-plugin")
         fun fromRequest(request: Request, logger: Logger? = null): SituatedInferenceContext {
 
             println("dataset ${(request as QueryRequest).dataset}")
@@ -109,6 +129,7 @@ inline fun <R> SailRepository.use(block: (SailRepository) -> R): R {
         block(this)
     } finally {
         this.shutDown()
+//        this.dataDir.deleteRecursively()
     }
 }
 
