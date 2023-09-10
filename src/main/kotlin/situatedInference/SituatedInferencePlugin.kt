@@ -632,7 +632,7 @@ fun QueryRequest.hasSystemGraphs() =
     this.dataset?.defaultGraphs?.any { it.namespace.startsWith(SystemGraphs.NAMESPACE) } == true
 
 fun replaceDefaultGraphId(it: Long) = when (it) {
-    SystemGraphs.RDF4J_NIL.id.toLong() -> SystemGraphs.EXPLICIT_GRAPH.id.toLong() //TODO consider whether readwrite would be more accurate
+    SystemGraphs.RDF4J_NIL.id.toLong() -> SystemGraphs.EXPLICIT_GRAPH.id.toLong()
     else -> it
 }
 
