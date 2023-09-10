@@ -354,9 +354,9 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     ): StatementIterator? {
         val graphToExpand = if (objectId != UNBOUND) objectId else return StatementIterator.EMPTY
         val expanded = if (subjectId != UNBOUND) subjectId else return StatementIterator.EMPTY
-        //            if (requestContext.inMemoryContexts[graphToExpand] == null || graphToExpand !in requestContext.repositoryConnection.contextIDs.asSequence()
-        //                    .map { it.context }
-        //            ) return StatementIterator.EMPTY
+        if (graphToExpand !in requestContext.repoContexts && graphToExpand !in requestContext.inMemoryContexts) {
+            return StatementIterator.EMPTY
+        }
         requestContext.inMemoryContexts[expanded] = ExpandableContext(
             (requestContext.inMemoryContexts[graphToExpand] as? Quotable)?.sourceId ?: graphToExpand,
             expanded,
