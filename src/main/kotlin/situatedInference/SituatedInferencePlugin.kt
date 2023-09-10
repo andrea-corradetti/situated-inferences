@@ -117,9 +117,6 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             return 9.0
         }
 
-
-
-
         if (predicateId == situateSchemaId) {
             return 20.0
         }
@@ -663,9 +660,3 @@ fun <E> Collection<E>.pairs(): Sequence<Pair<E, E>> = sequence {
         }
     }
 }
-
-val deleteAll = """
-            DELETE WHERE {
-              ?s ?p ?o .
-            }
-        """.trimIndent()
