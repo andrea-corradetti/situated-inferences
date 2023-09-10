@@ -90,6 +90,10 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         pluginConnection: PluginConnection,
         requestContext: RequestContext
     ): Double {
+        if (requestContext !is SituatedInferenceContext) {
+            return Double.POSITIVE_INFINITY
+        }
+
         if (subjectId == UNBOUND && predicateId == UNBOUND && objectId == UNBOUND && contextId == UNBOUND) {
             return 10000.0
         }
@@ -99,7 +103,9 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         }
 
         if (pluginConnection.entities.get(contextId)?.stringValue()?.startsWith(namespace + "schemas") == true) {
-            if (subjectId == UNBOUND) return 10000.0
+            if (subjectId == UNBOUND) {
+                return 10000.0
+            }
             return 10.0
         }
 
@@ -133,6 +139,9 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         }
 
         if (predicateId == expandsId) {
+            if (objectId !in requestContext.repoContexts && objectId !in requestContext.inMemoryContexts) {
+                return 10000.0
+            }
             return 45.0
         }
 
