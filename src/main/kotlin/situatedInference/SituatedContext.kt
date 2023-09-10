@@ -69,7 +69,15 @@ class SituatedContext(
         val storageIterator = storage.bottom()
         storage.add(subject, predicate, `object`, situatedContextId, StatementIdIterator.EXPLICIT_STATEMENT_STATUS)
 //        storage.add(subject, predicate, `object`, context, StatementIdIterator.EXPLICIT_STATEMENT_STATUS)
-        logger.debug("forward chaining added ${getPrettyStringFor(subject, predicate, `object`)}")
+//        logger.debug(
+//            "forward chaining added ${
+//                requestContext.repositoryConnection.getPrettyStringFor(
+//                    subject,
+//                    predicate,
+//                    `object`
+//                )
+//            }"
+//        )
 
         if (!requestContext.isInferenceEnabled) {
             logger.warn("Inference is not enabled - skipping inference")
@@ -124,7 +132,13 @@ class SituatedContext(
 
         if (statementIsAxiom(subject, predicate, `object`)) {
             logger.debug(
-                "Rule fired but statement already existing as axiom ${getPrettyStringFor(subject, predicate, `object`)}"
+                "Rule fired but statement already existing as axiom ${
+                    requestContext.repositoryConnection.getPrettyStringFor(
+                        subject,
+                        predicate,
+                        `object`
+                    )
+                }"
             )
             return
         }
@@ -175,32 +189,6 @@ class SituatedContext(
         return statementIdIteratorFromSequence(axiomsFromRepo + statementsFromStorage)
     }
 
-    private fun getPrettyStringFor(
-        subject: Long,
-        predicate: Long,
-        `object`: Long,
-        context: Long? = null
-    ) = buildString {
-        append("($subject $predicate $`object` $context):")
-        append("(")
-        append(getPrettyStringValue(subject) + " ")
-        append(getPrettyStringValue(predicate) + " ")
-        append(getPrettyStringValue(`object`) + " ")
-        append(getPrettyStringValue(context))
-        append(")")
-    }
-
-    private fun getPrettyStringValue(entityId: Long?): String {
-        return when (entityId) {
-            null -> "null"
-            0L -> "unbound"
-            else -> try {
-                repositoryConnection.entityPoolConnection.entities[entityId].stringValue()
-            } catch (e: Exception) {
-                "no entity found"
-            }
-        }
-    }
 
     override fun doInference(
         subject: Long,
@@ -247,21 +235,33 @@ fun SituatedInferenceContext.getStatementForInconsistentRealContext(contextId: L
         emptySequence()
 }
 
-fun SituatedInferenceContext.isRepositoryConsistent(repository: SailRepository): Boolean {
-    val checkForInconsistencies = """
-                prefix sys: <http://www.ontotext.com/owlim/system#>
-                
-                INSERT DATA {
-                    _:b sys:consistencyCheckAgainstRuleset "${inferencer.ruleset}"
-                }
-            """.trimIndent()
-    try {
-        repository.connection.use { it.prepareUpdate(checkForInconsistencies).execute() }
-    } catch (e: Exception) {
-        if (isCause(e, ConsistencyException::class)) {
-            return true
+
+fun AbstractRepositoryConnection.getPrettyStringFor(
+    subject: Long,
+    predicate: Long,
+    `object`: Long,
+    context: Long? = null
+) = buildString {
+    append("($subject $predicate $`object` $context):")
+    append("(")
+    append(getPrettyStringValue(subject) + " ")
+    append(getPrettyStringValue(predicate) + " ")
+    append(getPrettyStringValue(`object`) + " ")
+    append(getPrettyStringValue(context))
+    append(")")
+}
+
+fun AbstractRepositoryConnection.getPrettyStringFor(quad: Quad) =
+    getPrettyStringFor(quad.subject, quad.predicate, quad.`object`, quad.context)
+
+fun AbstractRepositoryConnection.getPrettyStringValue(entityId: Long?): String {
+    return when (entityId) {
+        null -> "null"
+        0L -> "unbound"
+        else -> try {
+            entityPoolConnection.entities[entityId].stringValue()
+        } catch (e: Exception) {
+            "no entity found"
         }
-        throw e
     }
-    return false
 }
