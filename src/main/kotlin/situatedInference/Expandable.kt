@@ -26,7 +26,6 @@ class ExpandableContext(
 
     private val entities = requestContext.repositoryConnection.entityPoolConnection.entities
 
-    //TODO should be fetching from everywhere to get quoting statements
     override fun getExpansionsInSubject(): ContextWithStorage {
         val reifiedStatementsAsQuoted =
             requestContext.repositoryConnection.getStatements(sourceId, 0, 0, 0).asSequence().map { quotingQuad ->
