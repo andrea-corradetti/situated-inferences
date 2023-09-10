@@ -11,7 +11,7 @@ class SchemaForSituate(private val requestContext: SituatedInferenceContext) {
     val contextToNameForSituation = mutableMapOf<Long, String>()
     val boundTasks = mutableSetOf<SituateTask>()
 
-    var suffix by Delegates.observable("") { property, oldValue, newValue ->
+    var suffix by Delegates.observable("") { _, oldValue, newValue ->
         if (oldValue != newValue) {
             boundTasks.forEach { it.renameSituatedContexts() }
         }
