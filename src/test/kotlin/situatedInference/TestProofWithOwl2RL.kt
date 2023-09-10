@@ -133,7 +133,7 @@ class TestProofWithOwl2RL {
     }
 
     @Test
-    fun `Rechecking for incosistencies raises exception`() {
+    fun `Rechecking for inconsistencies raises exception`() {
         val insertSchema = """
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
             PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -194,24 +194,6 @@ class TestProofWithOwl2RL {
                         :Superman owl:sameAs :ClarkKent.
                         :Superman a t:FictionalPerson .
                     }
-            }
-        """.trimIndent()
-
-        val situateInconsistentData = """
-            PREFIX owl: <http://www.w3.org/2002/07/owl#>
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX conj: <https://w3id.org/conjectures/>
-            PREFIX : <http://a#>
-            PREFIX t: <http://t#>
-        
-            
-            select ?s ?p ?o where {
-                conj:thoughts conj:situate ( <http://rdf4j.org/schema/rdf4j#nil> :LoisLanesThoughts :MarthaKentsThoughts :myThoughts )  .
-                
-                graph conj:thoughts {
-                    ?s ?p ?o 
-                }
             }
         """.trimIndent()
 
@@ -1691,29 +1673,6 @@ class TestProofWithOwl2RL {
             }  
         """.trimIndent()
 
-        val convertReifiedStatementWithEmbeddedTriple = """
-                PREFIX conj: <https://w3id.org/conjectures/>
-                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
-                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-                
-                PREFIX : <http://a#>
-                
-                select ?subject ?predicate ?object where {
-                    
-                    :S conj:asSingleton conj:singleton
-                    
-                    graph conj:singleton {
-                        ?subject ?predicate ?object
-                    }
-                    
-                    ##:reified-situated conj:situate :reified
-                    
-                    #graph :reified-situated {
-                    #    ?s ?p ?o. 
-                    #}
-                }
-        """.trimIndent()
-
         val convertReifiedStatement = """
                 PREFIX conj: <https://w3id.org/conjectures/>
                 PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
@@ -1722,18 +1681,11 @@ class TestProofWithOwl2RL {
                 PREFIX : <http://a#>
                 
                 select ?subject ?predicate ?object where {
-                    
                     :S conj:asSingleton conj:singleton
                     
                     graph conj:singleton {
                         ?subject ?predicate ?object
                     }
-                    
-                    ##:reified-situated conj:situate :reified
-                    
-                    #graph conj:singleton {
-                    #    ?s ?p ?o. 
-                    #}
                 }
         """.trimIndent()
 
@@ -1745,7 +1697,7 @@ class TestProofWithOwl2RL {
         }
         println("result1 set ${result1.size} $result1")
 
-        assert(result1.isNotEmpty())
+        assert(result1.size == 1)
         assert(
             result1.contains(
                 mapOf(
@@ -1754,7 +1706,7 @@ class TestProofWithOwl2RL {
                     "object" to "http://a#clingFromCeiling",
                 )
             )
-        )
+        ) { println("Result does not contain {subject=http://a#Superman, predicate=http://a#can, object=http://a#clingFromCeiling}") }
     }
 
     @Test
@@ -1820,7 +1772,7 @@ class TestProofWithOwl2RL {
             }  
         """.trimIndent()
 
-        val convertReifiedStatement = """
+        val convertReifiedStatementAndSituate = """
                 PREFIX conj: <https://w3id.org/conjectures/>
                 PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -1842,7 +1794,7 @@ class TestProofWithOwl2RL {
         val result1 = createCleanRepositoryWithDefaults().use { repo ->
             repo.connection.use {
                 it.prepareUpdate(addReifiedStatement).execute()
-                it.prepareTupleQuery(convertReifiedStatement).evaluate().map(BindingSet::toStringValueMap).toSet()
+                it.prepareTupleQuery(convertReifiedStatementAndSituate).evaluate().map(BindingSet::toStringValueMap).toSet()
             }
         }
         println("result1 set ${result1.size} $result1")
@@ -1949,7 +1901,7 @@ class TestProofWithOwl2RL {
         }
         println("result1 set ${result1.size} $result1")
 
-        assert(result1.isNotEmpty())
+        assert(result1.size == 536) //it's just the situation size times 4
 
         assert(
             result1.groupBy { it["subject"]!! }.any { (statement, reification) ->
@@ -2341,30 +2293,6 @@ class TestProofWithOwl2RL {
                 }
         """.trimIndent()
 
-        val convertReifiedStatement = """
-                PREFIX conj: <https://w3id.org/conjectures/>
-                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
-                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-                
-                PREFIX : <http://a#>
-                
-                select distinct ?rs ?predicate ?object where {
-                
-                    :S conj:asSingleton conj:singleton.
-                    ?g conj:situate (conj:singleton rdf4j:nil).
-                    
-                    #?task conj:hasSituatedContext ?g.
-                    
-                    ?reifiedGraph conj:reifiesGraph ?g.
-                    
-                    graph ?reifiedGraph {
-                        ?rs ?rp ?ro.
-                    } 
-                    
-                    ?rs ?predicate ?object
-                }
-        """.trimIndent()
-
         val result1 = createCleanRepositoryWithDefaults().use { repo ->
             repo.connection.use {
                 it.prepareUpdate(addReifiedStatement).execute()
@@ -2489,7 +2417,7 @@ class TestProofWithOwl2RL {
         assert(result1.isNotEmpty())
         assert(result2.isNotEmpty())
 
-        val grouped = (result1 + result2).groupBy { it["predicate"] to it["object"] }.mapValues { (pair, list) ->
+        val grouped = (result1 + result2).groupBy { it["predicate"] to it["object"] }.mapValues { (_, list) ->
             list.map { it["subject"] }
         }
         println(grouped)
@@ -2614,7 +2542,7 @@ class TestProofWithOwl2RL {
         assert(result1.isNotEmpty())
         assert(result2.isNotEmpty())
 
-        val grouped = (result1 + result2).groupBy { it["predicate"] to it["object"] }.mapValues { (pair, list) ->
+        val grouped = (result1 + result2).groupBy { it["predicate"] to it["object"] }.mapValues { (_, list) ->
             list.map { it["subject"] }
         }
         println(grouped)
@@ -2989,6 +2917,128 @@ class TestProofWithOwl2RL {
     }
 
     @Test
+    fun `Graph for rdf-star is expanded in object in situating triples`() {
+        val addRdfstarStatements = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+            
+            INSERT DATA {
+            
+                #######################################
+                #                                     #
+                #           SHARED KNOWLEDGE          #
+                #                                     #
+                #######################################
+        
+                :Superman a t:Person.
+                :Flash a t:Person.
+                :ClarkKent a t:Person.
+    
+                :LoisLane a t:Person.
+                :MarthaKent a t:Person.
+                :I a t:Person.
+                       
+                t:FictionalPerson rdfs:subClassOf t:Person.
+                t:RealPerson rdfs:subClassOf t:Person.
+                t:FictionalPerson owl:complementOf t:RealPerson.
+               
+                :fly a t:flyingPower.
+                :clingFromCeiling a t:spiderLikePower.
+    
+                t:flyingPower rdfs:subClassOf t:supernaturalPower.
+                t:spiderLikePower rdfs:subClassOf t:supernaturalPower.
+               
+                t:SuperHero rdfs:subClassOf t:Person;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:supernaturalPower.
+                t:FlyingSuperHero rdfs:subClassOf t:SuperHero;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:flyingPower.   
+                t:SpiderSuperHero rdfs:subClassOf t:SuperHero;
+                               owl:onProperty :can;
+                               owl:someValuesFrom t:spiderLikePower.
+                t:FlyingSuperHero owl:disjointWith t:SpiderSuperHero .    
+                    
+                #######################################
+                #                                     #
+                #           RDF-STAR                  #
+                #                                     #
+                #######################################
+    
+            :I :thinks << :Flash :can :clingFromCeiling >>.
+            :I :thinks << :Superman :can :clingFromCeiling >>.
+                
+            }  
+        """.trimIndent()
+
+        val getStatementsQuotingEmbedded = """
+                PREFIX conj: <https://w3id.org/conjectures/>
+                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                PREFIX : <http://a#>      
+                
+                select distinct  ?subject ?predicate ?object ?context where {
+                    :I :thinks ?triple.
+                    
+                    bind (conj:situations\/I-thinks as ?g)
+             
+                    ?g conj:groupsTriple ?triple.
+                     
+                     graph conj:schemas\/s {
+                        ?g a conj:SituatedContext.
+                        rdf4j:nil a conj:SharedKnowledgeContext.
+                     }
+                     
+                    conj:task conj:situateSchema conj:schemas\/s.
+                    
+                    conj:expanded conj:expands ?g
+                    
+                    bind (conj:expanded as ?object).
+                    graph ?context {
+                        ?subject ?predicate ?object . 
+                    }
+                }
+               
+        """.trimIndent()
+
+
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(addRdfstarStatements).execute()
+                it.prepareTupleQuery(getStatementsQuotingEmbedded).evaluate().map(BindingSet::toStringValueMap)
+                    .toSet()
+            }
+        }
+        println("result1 set ${result1.size} $result1")
+
+        assert(result1.isNotEmpty())
+        assert(
+            result1.contains(
+                mapOf(
+                    "subject" to "http://a#I",
+                    "predicate" to "http://a#thinks",
+                    "object" to "<<http://a#Superman http://www.w3.org/1999/02/22-rdf-syntax-ns#type http://t#SpiderSuperHero>>",
+                    "context" to "http://www.ontotext.com/implicit"
+                )
+            )
+        )
+        assert(
+            result1.contains(
+                mapOf(
+                    "subject" to "http://a#I",
+                    "predicate" to "http://a#thinks",
+                    "object" to "<<http://a#Flash http://www.w3.org/1999/02/22-rdf-syntax-ns#type http://t#SpiderSuperHero>>",
+                    "context" to "http://www.ontotext.com/implicit"
+                )
+            )
+        )
+    }
+
+    @Test
     fun `Graph for rdf-star is expanded in situating triples`() {
         val addReifiedStatement = """
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
@@ -3042,7 +3092,6 @@ class TestProofWithOwl2RL {
                 #######################################
     
             :I :thinks << :Flash :can :clingFromCeiling >>.
-   
             :I :thinks << :Superman :can :clingFromCeiling >>.
                 
             }  
@@ -3082,14 +3131,21 @@ class TestProofWithOwl2RL {
                         graph ?context {
                             ?subject ?predicate ?object . 
                         }
-                    }
+                    }                    
                     UNION
                     {
+                        bind(?g as ?object)
                         graph ?context {
-                            ?subject ?predicate ?object
+                            ?subject ?predicate ?object . 
+                        }
+                    }                    
+                    UNION
+                    {
+                        bind(?g as ?context)
+                        graph ?context {
+                            ?subject ?predicate ?object . 
                         }
                     }
-                    
                 }
                
         """.trimIndent()
@@ -3131,7 +3187,7 @@ class TestProofWithOwl2RL {
                     "subject" to "http://a#I",
                     "predicate" to "http://a#thinks",
                     "object" to "<<http://a#Superman http://www.w3.org/1999/02/22-rdf-syntax-ns#type http://t#SpiderSuperHero>>",
-                    "context" to "http://www.ontotext.com/explicit"
+                    "context" to "http://www.ontotext.com/implicit"
                 )
             )
         )
@@ -3141,7 +3197,7 @@ class TestProofWithOwl2RL {
                     "subject" to "http://a#I",
                     "predicate" to "http://a#thinks",
                     "object" to "<<http://a#Flash http://www.w3.org/1999/02/22-rdf-syntax-ns#type http://t#SpiderSuperHero>>",
-                    "context" to "http://www.ontotext.com/explicit"
+                    "context" to "http://www.ontotext.com/implicit"
                 )
             )
         )
@@ -3174,9 +3230,6 @@ class TestProofWithOwl2RL {
                     t:FictionalPerson rdfs:subClassOf t:Person.
                     t:RealPerson rdfs:subClassOf t:Person.
                     t:FictionalPerson owl:complementOf t:RealPerson.
-                  
-        
-
             }
         """.trimIndent()
 
@@ -3214,7 +3267,7 @@ class TestProofWithOwl2RL {
             }
         """.trimIndent()
 
-        val SelectInconsistentWith = """
+        val selectInconsistentWith = """
                 PREFIX conj: <https://w3id.org/conjectures/>
                 PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -3241,7 +3294,7 @@ class TestProofWithOwl2RL {
             repo.connection.use {
                 it.prepareUpdate(insertSharedKnowledge).execute()
                 it.prepareUpdate(insertInconsistentData).execute()
-                it.prepareTupleQuery(SelectInconsistentWith).evaluate().map(BindingSet::toStringValueMap)
+                it.prepareTupleQuery(selectInconsistentWith).evaluate().map(BindingSet::toStringValueMap)
                     .toSet()
             }
         }
@@ -3352,7 +3405,7 @@ class TestProofWithOwl2RL {
     }
 
     @Test
-    fun `Find disagreemnt with unbound object`() {
+    fun `Find disagreement with unbound object`() {
         val insertSharedKnowledge = """
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
             PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -3455,7 +3508,7 @@ class TestProofWithOwl2RL {
     }
 
     @Test
-    fun `Find disagreemnt with unbound subject`() {
+    fun `Find disagreement with unbound subject`() {
         val insertSharedKnowledge = """
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
             PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -3620,6 +3673,105 @@ class TestProofWithOwl2RL {
                    GRAPH :myThoughts {
                         :Superman owl:sameAs :ClarkKent.
                         :Superman a t:FictionalPerson .
+                    }
+            }
+        """.trimIndent()
+
+        val SelectInconsistentWith = """
+                PREFIX conj: <https://w3id.org/conjectures/>
+                PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                PREFIX : <http://a#>      
+                
+                select distinct ?s ?p ?o where {
+                    
+                     graph conj:schemas\/s {
+                        :MarthaKentsThoughts a conj:SituatedContext.
+                        :myThoughts a conj:SituatedContext.
+                        rdf4j:nil a conj:SharedKnowledgeContext.
+                     }
+                     
+                    conj:task conj:situateSchema conj:schemas\/s.
+                
+                    VALUES (?p) { (conj:disagreesWith) }
+                    ?s ?p ?o
+                }
+               
+        """.trimIndent()
+
+
+        val result1 = createCleanRepositoryWithDefaults().use { repo ->
+            repo.connection.use {
+                it.prepareUpdate(insertSharedKnowledge).execute()
+                it.prepareUpdate(insertInconsistentData).execute()
+                it.prepareTupleQuery(SelectInconsistentWith).evaluate().map(BindingSet::toStringValueMap)
+                    .toSet()
+            }
+        }
+
+        println("result1 ${result1.size} $result1")
+        assert(result1.isNotEmpty())
+    }
+
+        @Test
+    fun `Asking for disagreement of inconsistent contexts returns inconsistent constituents`() {
+        val insertSharedKnowledge = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+        
+            INSERT DATA {
+            #######################################
+            #                                     #
+            #           SHARED KNOWLEDGE          #
+            #                                     #
+            #######################################
+        
+                    :Superman a t:Person.
+                    :ClarkKent a t:Person.
+        
+                    :LoisLane a t:Person.
+                    :MarthaKent a t:Person.
+                    :I a t:Person.
+                           
+                    t:FictionalPerson rdfs:subClassOf t:Person.
+                    t:RealPerson rdfs:subClassOf t:Person.
+                    t:FictionalPerson owl:complementOf t:RealPerson.
+                  
+        
+
+            }
+        """.trimIndent()
+
+        val insertInconsistentData = """
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX conj: <https://w3id.org/conjectures/>
+            PREFIX : <http://a#>
+            PREFIX t: <http://t#>
+            
+            #########################################
+            #                                       #
+            #            NAMED GRAPHS               #
+            #                                       #
+            #    This should NEVER be consistent    #
+            #                                       #
+            #########################################
+        
+            INSERT DATA {
+                   GRAPH :LoisLanesThoughts {
+                        :Superman owl:differentFrom :ClarkKent.
+                        :Superman a t:RealPerson .
+                        :Superman a t:FictionalPerson .
+                    }
+
+                   GRAPH :MarthaKentsThoughts {
+                       :Superman owl:sameAs :ClarkKent.
+                        :Superman a t:RealPerson .
                     }
             }
         """.trimIndent()
