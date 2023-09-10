@@ -37,6 +37,9 @@ class SituatedInferenceContext(
     val isInferenceEnabled
         get() = inferencer.inferStatementsFlag
 
+    val entities
+        get() = repositoryConnection.entityPoolConnection.entities
+
     private var request: Request? = null
 
     override fun getRequest(): Request? = request
