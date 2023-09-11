@@ -288,7 +288,15 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         val quotingObject =
             (requestContext.inMemoryContexts[objectId] as? Quotable)?.getQuotingAsObject()?.getAll() ?: emptySequence()
 
-        return (statements + quotingSubject + quotingObject).toStatementIterator()
+        val expandedTriplesInSubject =
+            (requestContext.inMemoryContexts[subjectId] as? ExpandableContext)?.getExpansions()?.getAll()
+                ?: emptySequence()
+
+        val expandedTriplesInObject =
+            (requestContext.inMemoryContexts[objectId] as? ExpandableContext)?.getExpansions()?.getAll()
+                ?: emptySequence()
+
+        return (statements + quotingSubject + quotingObject + expandedTriplesInSubject + expandedTriplesInObject).toStatementIterator()
     }
 
     private fun handleDisagreesWith(
@@ -386,7 +394,8 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         context.add(
             pluginConnection.entities.resolve(triple.subject),
             pluginConnection.entities.resolve(triple.predicate),
-            pluginConnection.entities.resolve(triple.`object`)
+            pluginConnection.entities.resolve(triple.`object`),
+            subjectId,
         )
         (requestContext.inMemoryContexts[subjectId] as? SituatedContext)?.computeClosure()
         return StatementIterator.create(subjectId, groupsTripleId, objectId, contextId)
