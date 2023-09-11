@@ -1,9 +1,6 @@
 package situatedInference
 
-import com.ontotext.trree.AbstractInferencerTask
-import com.ontotext.trree.StatementIdIterator
-import com.ontotext.trree.SwitchableInferencer
-import com.ontotext.trree.SystemGraphs
+import com.ontotext.trree.*
 import com.ontotext.trree.consistency.ConsistencyException
 import com.ontotext.trree.sdk.Entities
 import com.ontotext.trree.sdk.Entities.UNBOUND
