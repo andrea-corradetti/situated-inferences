@@ -150,14 +150,12 @@ class SituatedContext(
     }
 
     private fun statementIsAxiom(subject: Long, predicate: Long, `object`: Long): Boolean {
-        repositoryConnection.getStatements(
+        return repositoryConnection.getStatements(
             subject,
             predicate,
             `object`,
             StatementIdIterator.DELETED_STATEMENT_STATUS or StatementIdIterator.SKIP_ON_BROWSE_STATEMENT_STATUS or StatementIdIterator.GENERATED_STATEMENT_STATUS
-        ).use { iter ->
-            return iter.asSequence().any { it.isAxiom() }
-        }
+        ).asSequence().any { it.isAxiom() }
     }
 
     override fun getRepStatements(
