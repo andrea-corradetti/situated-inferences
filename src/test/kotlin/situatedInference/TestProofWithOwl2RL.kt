@@ -28,7 +28,7 @@ class TestProofWithOwl2RL {
         val situateNamedGraph = """
             PREFIX conj: <https://w3id.org/conjectures/>
             
-            select distinct ?s ?p ?o where {
+            select distinct ?s ?p ?o from conj:situations where {
             
                 graph conj:schemas\/s {
                     <urn:family> a conj:SituatedContext.
@@ -57,7 +57,7 @@ class TestProofWithOwl2RL {
         val situateBothGraphs = """
             PREFIX conj: <https://w3id.org/conjectures/>
             
-            select distinct ?s ?p ?o where {
+            select distinct ?s ?p ?o from conj:situations where {
                graph conj:schemas\/s {
                     <urn:family> a conj:SituatedContext.
                     rdf4j:nil a conj:SharedKnowledgeContext.
@@ -81,7 +81,7 @@ class TestProofWithOwl2RL {
         val situateDefaultGraph = """
             PREFIX conj: <https://w3id.org/conjectures/>
             
-            select distinct ?s ?p ?o where {
+            select distinct ?s ?p ?o from conj:situations where {
                  conj:task conj:situateSchema conj:schemas\/s.
             
                graph conj:schemas\/s {
@@ -233,7 +233,7 @@ class TestProofWithOwl2RL {
         val situateDefaultGraph = """
             PREFIX conj: <https://w3id.org/conjectures/>
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
-            select distinct ?s ?p ?o where {
+            select distinct ?s ?p ?o from conj:situations where {
                 #conj:defaultGraph conj:situate (<http://rdf4j.org/schema/rdf4j#nil>)  .
                 
                 ?task conj:situateSchema conj:schemas\/s1
@@ -260,7 +260,7 @@ class TestProofWithOwl2RL {
             
             select distinct * 
             from onto:readwrite
-            where { 
+            from conj:situations where { 
                 ?s ?p ?o
             } 
             
@@ -374,7 +374,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o where {
+            select ?s ?p ?o from conj:situations where {
             
                 conj:task conj:situateSchema conj:schemas\/thoughts.
             
@@ -477,7 +477,9 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 
+            from conj:situations
+            from conj:situations where {
             
               ?task conj:situateSchema conj:schemas\/thoughts.
                       
@@ -588,7 +590,9 @@ class TestProofWithOwl2RL {
                 graph ?g1 {
                     ?s ?p ?o
                 }
-            } where {
+            } 
+            using conj:situations
+            where {
             
               ?task conj:situateSchema conj:schemas\/thoughts.
                       
@@ -612,7 +616,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 from conj:situations where {
                 bind (:LoisLanesThoughts as ?g1).
                 graph ?g1 {
                     ?s ?p ?o .
@@ -709,7 +713,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 from conj:situations where {
                             
                 ?task conj:situateSchema conj:schemas\/thoughts.
            
@@ -850,7 +854,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 from conj:situations where {
             
                 ?task conj:situateSchema conj:schemas\/thoughts.
             
@@ -876,7 +880,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 from conj:situations where {
             
                 conj:task conj:situateSchema conj:schemas\/thoughts.
             
@@ -991,7 +995,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 from conj:situations where {
             
                 conj:task conj:situateSchema conj:schemas\/thoughts.
             
@@ -1017,7 +1021,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 from conj:situations where {
                 conj:task conj:situateSchema conj:schemas\/thoughts.
             
                 graph conj:schemas\/thoughts {
@@ -1131,7 +1135,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 from conj:situations where {
                 graph conj:schemas\/thoughts {
                     rdf4j:nil a conj:SharedKnowledgeContext.
                     :LoisLanesThoughts a conj:SituatedContext.
@@ -1236,7 +1240,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 from conj:situations where {
                             
                graph ?g1 {
                    ?s ?p ?o .
@@ -1342,7 +1346,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 from conj:situations where {
                             
                 ?task conj:situateSchema conj:schemas\/thoughts.
             
@@ -1367,7 +1371,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 from conj:situations where {
                 graph conj:schemas\/thoughts {
                     rdf4j:nil a conj:SharedKnowledgeContext.
                     :LoisLanesThoughts a conj:SituatedContext.
@@ -1390,7 +1394,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 from conj:situations where {
                             
                graph ?g1 {
                    ?s ?p ?o .
@@ -1506,7 +1510,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {
+            select ?s ?p ?o ?g1 from conj:situations where {
                 ?task conj:hasSituatedContext ?g1.
                 ?task conj:situateSchema conj:schemas\/thoughts.
                 
@@ -1577,7 +1581,7 @@ class TestProofWithOwl2RL {
             PREFIX rdf4j: <http://rdf4j.org/schema/rdf4j#>
             PREFIX : <http://a#>
             
-            select ?s ?p ?o ?g1 where {       
+            select ?s ?p ?o ?g1 from conj:situations where {       
                 ?task conj:hasSituatedContext ?g1.
 
                 ?task conj:situateSchema conj:schemas\/thoughts.
@@ -1680,7 +1684,7 @@ class TestProofWithOwl2RL {
                 
                 PREFIX : <http://a#>
                 
-                select ?subject ?predicate ?object where {
+                select ?subject ?predicate ?object from conj:situations where {
                     :S conj:asSingleton conj:singleton
                     
                     graph conj:singleton {
@@ -1779,7 +1783,7 @@ class TestProofWithOwl2RL {
                 
                 PREFIX : <http://a#>
                 
-                select ?subject ?predicate ?object where {
+                select ?subject ?predicate ?object from conj:situations where {
                     
                     :S conj:asSingleton conj:singleton.
                     
@@ -1881,13 +1885,13 @@ class TestProofWithOwl2RL {
                 
                 PREFIX : <http://a#>
                 
-                select distinct ?subject ?predicate ?object where {
+                select distinct ?subject ?predicate ?object from conj:situations where {
                     :S conj:asSingleton conj:singleton.
                     ?situation conj:situate (conj:singleton rdf4j:nil).
                     
-                    ?reifiedGraph conj:reifiesGraph ?situation
+                    :reifiedGraph conj:reifiesGraph ?situation
                     
-                    graph ?reifiedGraph {
+                    graph :reifiedGraph {
                         ?subject ?predicate ?object.
                     } 
                 }
@@ -2003,7 +2007,7 @@ class TestProofWithOwl2RL {
                 
                 PREFIX : <http://a#>
                 
-                select ?subject ?predicate ?object where {
+                select ?subject ?predicate ?object from conj:situations where {
                     :S conj:asTriple ?triple.
                     
                     :S conj:asTriple ?triple .
@@ -2059,7 +2063,7 @@ class TestProofWithOwl2RL {
             PREFIX t: <http://t#>
             
             
-            select ?subject ?predicate ?object where {
+            select ?subject ?predicate ?object from conj:situations where {
                
                 ?reifiedGraph conj:reifiesGraph :g1
                 
@@ -2176,7 +2180,7 @@ class TestProofWithOwl2RL {
                 
                 PREFIX : <http://a#>
                 
-                select distinct ?subject ?predicate ?object where {
+                select distinct ?subject ?predicate ?object from conj:situations where {
                     :S conj:asSingleton conj:singleton.
                     ?situation conj:situate (conj:singleton rdf4j:nil).
                     
@@ -2270,7 +2274,7 @@ class TestProofWithOwl2RL {
                 
                 PREFIX : <http://a#>
                 
-                select distinct ?rs ?predicate ?object where {
+                select distinct ?rs ?predicate ?object from conj:situations where {
                     :S conj:asSingleton conj:singleton.
                     
                     ?task conj:situateSchema conj:schemas\/s1.
@@ -2378,7 +2382,7 @@ class TestProofWithOwl2RL {
                 
                 PREFIX : <http://a#>
                 
-                select distinct ?subject ?predicate ?object where {
+                select distinct ?subject ?predicate ?object from conj:situations where {
                     :S conj:asSingleton conj:singleton.
                     
                     bind (:S as ?subject)
@@ -2393,7 +2397,7 @@ class TestProofWithOwl2RL {
                 
                 PREFIX : <http://a#>
                 
-                select distinct ?subject ?predicate ?object where {
+                select distinct ?subject ?predicate ?object from conj:situations where {
                     :S conj:asSingleton ?singleton.
                     
                     bind (?singleton as ?subject)
@@ -2494,7 +2498,7 @@ class TestProofWithOwl2RL {
                 
                 PREFIX : <http://a#>
                 
-                select distinct ?subject ?predicate ?object where {
+                select distinct ?subject ?predicate ?object from conj:situations where {
                     :S conj:asSingleton conj:singleton.
                     
                     bind (:S as ?subject)
@@ -2509,7 +2513,7 @@ class TestProofWithOwl2RL {
                 
                 PREFIX : <http://a#>
                 
-                select distinct ?subject ?predicate ?object where {
+                select distinct ?subject ?predicate ?object from conj:situations where {
                     :S conj:asSingleton conj:singleton.
                     
                     graph conj:schemas\/s1 {
@@ -2613,9 +2617,9 @@ class TestProofWithOwl2RL {
                 
                 PREFIX : <http://a#>
                 
-                select distinct * where {
+                select distinct * from conj:situations where {
                     {
-                        select distinct ?subject ?predicate ?object ?g where {
+                        select distinct ?subject ?predicate ?object ?g from conj:situations where {
                             :I :thinks ?triple.
                             
                             bind (conj:situations\/I-thinks as ?g)
@@ -2629,7 +2633,7 @@ class TestProofWithOwl2RL {
                     } 
                     UNION
                     {
-                        select distinct ?subject ?predicate ?object where {
+                        select distinct ?subject ?predicate ?object from conj:situations where {
                             :I :thinks ?triple.
                             bind (?triple as ?object).
                             ?subject ?predicate ?object.
@@ -2737,7 +2741,7 @@ class TestProofWithOwl2RL {
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 PREFIX : <http://a#>      
                 
-                select distinct  ?subject ?predicate ?object where {
+                select distinct  ?subject ?predicate ?object from conj:situations where {
                     :I :thinks ?triple.
                     
                     bind (conj:situations\/I-thinks as ?g)
@@ -2844,7 +2848,7 @@ class TestProofWithOwl2RL {
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 PREFIX : <http://a#>      
                 
-                select distinct  ?subject ?predicate ?object ?context where {
+                select distinct  ?subject ?predicate ?object ?context from conj:situations where {
                     :I :thinks ?triple.
                     
                     bind (conj:situations\/I-thinks as ?g)
@@ -2981,7 +2985,7 @@ class TestProofWithOwl2RL {
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 PREFIX : <http://a#>      
                 
-                select distinct  ?subject ?predicate ?object ?context where {
+                select distinct  ?subject ?predicate ?object ?context from conj:situations where {
                     :I :thinks ?triple.
                     
                     bind (conj:situations\/I-thinks as ?g)
@@ -3103,7 +3107,7 @@ class TestProofWithOwl2RL {
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 PREFIX : <http://a#>      
                 
-                select distinct  ?subject ?predicate ?object ?context where {
+                select distinct  ?subject ?predicate ?object ?context from conj:situations where {
                     :I :thinks ?triple.
                     
                     bind (conj:situations\/I-thinks as ?g)
@@ -3273,7 +3277,7 @@ class TestProofWithOwl2RL {
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 PREFIX : <http://a#>      
                 
-                select distinct ?s ?p ?o where {
+                select distinct ?s ?p ?o from conj:situations where {
                     
                      graph conj:schemas\/s {
                         :MarthaKentsThoughts a conj:SituatedContext.
@@ -3477,7 +3481,7 @@ class TestProofWithOwl2RL {
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 PREFIX : <http://a#>      
                 
-                select distinct ?s ?p ?o where {
+                select distinct ?s ?p ?o from conj:situations where {
                     
                      graph conj:schemas\/s {
                         :MarthaKentsThoughts a conj:SituatedContext.
@@ -3580,7 +3584,7 @@ class TestProofWithOwl2RL {
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 PREFIX : <http://a#>      
                 
-                select distinct ?s ?p ?o where {
+                select distinct ?s ?p ?o from conj:situations where {
                     
                      graph conj:schemas\/s {
                         :MarthaKentsThoughts a conj:SituatedContext.
@@ -3683,7 +3687,7 @@ class TestProofWithOwl2RL {
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 PREFIX : <http://a#>      
                 
-                select distinct ?s ?p ?o where {
+                select distinct ?s ?p ?o from conj:situations where {
                     
                      graph conj:schemas\/s {
                         :MarthaKentsThoughts a conj:SituatedContext.
@@ -3782,7 +3786,7 @@ class TestProofWithOwl2RL {
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 PREFIX : <http://a#>      
                 
-                select distinct ?s ?p ?o where {
+                select distinct ?s ?p ?o from conj:situations where {
                     
                      graph conj:schemas\/s {
                         :MarthaKentsThoughts a conj:SituatedContext.
@@ -3870,7 +3874,6 @@ class TestProofWithOwl2RL {
 //            "ruleset" to "owl2-ql",
 //            "check-for-inconsistencies" to "true",
         )
-
 
         private fun createCleanRepositoryWithDefaults(name: String = UUID.randomUUID().toString()) =
             createRepository(name, sailParams)
