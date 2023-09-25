@@ -20,6 +20,8 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
     //TODO move to object
 
     private val namespace = "https://w3id.org/conjectures/"
+
+    private val conjSituatedDataset = namespace + "situations"
     private val situateIri = iri(namespace + "situate")
     private val sharedIri = iri(namespace + "shared")
     private val situateInsideIri = iri(namespace + "situateInside")
@@ -160,6 +162,10 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         }
 
         if ((requestContext.request as QueryRequest).hasSystemGraphs()) {
+            return null
+        }
+
+        if (!(requestContext.request as QueryRequest).hasSituationDataset()) {
             return null
         }
 
@@ -621,6 +627,10 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             Quad(statementId, entities.resolve(RDF.OBJECT), it.`object`),
         )
     }
+
+    fun QueryRequest.hasSituationDataset() =
+        this.dataset?.defaultGraphs?.any { it.stringValue().startsWith(conjSituatedDataset) } == true
+
 }
 
 private fun PluginConnection.getReifiedStatementId(subject: Long, predicate: Long, `object`: Long): Long? {
@@ -639,6 +649,8 @@ private fun PluginConnection.getReifiedStatementId(subject: Long, predicate: Lon
 
 fun QueryRequest.hasSystemGraphs() =
     this.dataset?.defaultGraphs?.any { it.namespace.startsWith(SystemGraphs.NAMESPACE) } == true
+
+
 
 fun replaceDefaultGraphId(it: Long) = when (it) {
     SystemGraphs.RDF4J_NIL.id.toLong() -> SystemGraphs.EXPLICIT_GRAPH.id.toLong()
