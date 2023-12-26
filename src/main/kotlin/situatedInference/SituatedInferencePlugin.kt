@@ -247,9 +247,13 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             val statementsToReify = requestContext.inMemoryContexts[graphToReify]?.getAll()
                 ?: pluginConnection.statements.get(UNBOUND, UNBOUND, UNBOUND, graphToReify).asSequence()
             val reifiedStatements = statementsToReify.map { pluginConnection.getReification(it) }.flatten()
+            val sourceId = (requestContext.inMemoryContexts[graphToReify] as? Quotable)?.sourceId ?: graphToReify
             requestContext.inMemoryContexts[reificationId] =
-                ReifiedContext.fromSequence(reifiedStatements, graphToReify, reificationId, requestContext)
+                ReifiedContext.fromSequence(reifiedStatements, sourceId, reificationId, requestContext)
 
+            requestContext.sourceIdToQuotable[sourceId] = requestContext.inMemoryContexts[reificationId] as Quotable
+            requestContext.sourceIdToReifcation[sourceId] =
+                requestContext.inMemoryContexts[reificationId] as ReifiedContext
             return StatementIterator.create(reificationId, predicateId, graphToReify, contextId)
         }
 
@@ -289,10 +293,23 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
         //TODO may be redundant
         val quotingSubject =
             (requestContext.inMemoryContexts[subjectId] as? Quotable)?.getQuotingAsSubject()?.getAll()
+                ?: requestContext.sourceIdToQuotable[subjectId]?.getQuoting()?.getAll()
                 ?: emptySequence()
 
         val quotingObject =
-            (requestContext.inMemoryContexts[objectId] as? Quotable)?.getQuotingAsObject()?.getAll() ?: emptySequence()
+            (requestContext.inMemoryContexts[objectId] as? Quotable)?.getQuotingAsObject()?.getAll()
+                ?: requestContext.sourceIdToQuotable[objectId]?.getQuoting()?.getAll()
+                ?: emptySequence()
+
+
+        val quotingReificationInSubject =
+            requestContext.sourceIdToReifcation[subjectId]?.getQuotingInnerStatement()?.getAll()
+                ?: emptySequence()
+
+
+        val quotingReificationInObject =
+            (requestContext.sourceIdToReifcation[objectId])?.getQuotingInnerStatement()?.getAll()
+                ?: emptySequence()
 
         val expandedTriplesInSubject =
             (requestContext.inMemoryContexts[subjectId] as? ExpandableContext)?.getExpansions()?.getAll()
@@ -302,7 +319,7 @@ class SituatedInferencePlugin : PluginBase(), Preprocessor, PatternInterpreter,
             (requestContext.inMemoryContexts[objectId] as? ExpandableContext)?.getExpansions()?.getAll()
                 ?: emptySequence()
 
-        return (statements + quotingSubject + quotingObject + expandedTriplesInSubject + expandedTriplesInObject).toStatementIterator()
+        return (statements + quotingSubject + quotingObject + expandedTriplesInSubject + expandedTriplesInObject + quotingReificationInSubject + quotingReificationInObject).toStatementIterator()
     }
 
     private fun handleDisagreesWith(
@@ -649,7 +666,6 @@ private fun PluginConnection.getReifiedStatementId(subject: Long, predicate: Lon
 
 fun QueryRequest.hasSystemGraphs() =
     this.dataset?.defaultGraphs?.any { it.namespace.startsWith(SystemGraphs.NAMESPACE) } == true
-
 
 
 fun replaceDefaultGraphId(it: Long) = when (it) {

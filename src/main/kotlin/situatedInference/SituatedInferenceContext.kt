@@ -16,6 +16,9 @@ class SituatedInferenceContext(
     val logger: Logger? = null,
 ) : RequestContext {
     val statementIdToSingletonId = mutableMapOf<Long, Long>()
+    val sourceIdToQuotable = mutableMapOf<Long, Quotable>()
+
+    val sourceIdToReifcation = mutableMapOf<Long, ReifiedContext>()
 
     val inMemoryContexts = mutableMapOf<Long, InMemoryContext>()
 
@@ -29,7 +32,7 @@ class SituatedInferenceContext(
     val schemas = mutableMapOf<Long, SchemaForSituate>()
 
     private val sailParams = mapOf(
-        "ruleset" to inferencer.ruleset,
+        "ruleset" to "owl2-rl",
         "check-for-inconsistencies" to "true",
     )
 
@@ -59,7 +62,8 @@ class SituatedInferenceContext(
 
 
     fun statementsDisagree(statements: Sequence<Quad>): Boolean {
-        createCleanRepositoryWithDefaults().use { repo ->
+        val repo = createCleanRepositoryWithDefaults()
+        try {
             repo.connection.use { conn ->
                 return try {
                     statements.forEach {
@@ -70,6 +74,8 @@ class SituatedInferenceContext(
                     isCause(e, ConsistencyException::class) || throw e
                 }
             }
+        } finally {
+            repo.shutDown()
         }
     }
 

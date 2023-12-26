@@ -8,30 +8,30 @@ package situatedInference
  * in internally consistent triples.
  *
  **/
-class ReifiedContext(reifiedContextId: Long, reificationId: Long, requestContext: SituatedInferenceContext) :
+class ReifiedContext(reifiedContextId: Long, reificationId: Long, private val requestContext: SituatedInferenceContext) :
     ContextWithStorage(),
     Quotable by QuotableImpl(reifiedContextId, reificationId, requestContext),
     Reified {
     override fun getQuotingInnerStatementsAsSubject(): ContextWithStorage {
-        val reifiedStatementsAsQuoted = find(sourceId, 0, 0).map { quotingQuad ->
+        val reifiedStatementsAsQuoted = requestContext.repositoryConnection.getStatements(sourceId, 0, 0, 0).asSequence().map { quotingQuad ->
             getAll().map { reifiedQuad -> quotingQuad.replaceValues(sourceId, reifiedQuad.subject) }
         }.flatten()
         return fromSequence(reifiedStatementsAsQuoted)
     }
 
     override fun getQuotingInnerStatementsAsObject(): ContextWithStorage {
-        val reifiedStatementsAsQuoted = find(0, 0, sourceId).map { quotingQuad ->
+        val reifiedStatementsAsQuoted = requestContext.repositoryConnection.getStatements(0, 0, sourceId, 0).asSequence().map { quotingQuad ->
             getAll().map { reifiedQuad -> quotingQuad.replaceValues(sourceId, reifiedQuad.subject) }
         }.flatten()
         return fromSequence(reifiedStatementsAsQuoted)
     }
 
     override fun getQuotingInnerStatement(): ContextWithStorage {
-        val reifiedStatementsAsQuotedInSubject = find(sourceId, 0, 0).map { quotingQuad ->
+        val reifiedStatementsAsQuotedInSubject = requestContext.repositoryConnection.getStatements(sourceId, 0, 0, 0).asSequence().map { quotingQuad ->
             getAll().map { reifiedQuad -> quotingQuad.replaceValues(sourceId, reifiedQuad.subject) }
         }.flatten()
 
-        val reifiedStatementsAsQuotedInObject = find(0, 0, sourceId).map { quotingQuad ->
+        val reifiedStatementsAsQuotedInObject = requestContext.repositoryConnection.getStatements(0, 0, sourceId, 0).asSequence().map { quotingQuad ->
             getAll().map { reifiedQuad -> quotingQuad.replaceValues(sourceId, reifiedQuad.subject) }
         }.flatten()
 

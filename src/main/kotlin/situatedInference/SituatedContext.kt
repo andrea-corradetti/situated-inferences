@@ -16,9 +16,10 @@ class SituatedContext(
     private val additionalContexts: Set<Long> = emptySet(),
     private val requestContext: SituatedInferenceContext
 ) : ContextWithStorage(),
-    Quotable by QuotableImpl(sourceId, situatedContextId, requestContext),
+//    Quotable by QuotableImpl(sourceId, situatedContextId, requestContext),
     AbstractInferencerTask,
-    CheckableForConsistency {
+    CheckableForConsistency,
+    Expandable by ExpandableContext(sourceId, situatedContextId, requestContext) {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private val inferencer = requestContext.inferencer
@@ -82,19 +83,19 @@ class SituatedContext(
         }
 
         storageIterator.asSequence().forEach {
-            if (inferencer.hasConsistencyRules()) {
-                //logger.debug("ruleset has consistency rules")
-                val currentInferencer = (inferencer as SwitchableInferencer).currentInferencer
-                val inconsistencies = currentInferencer.checkForInconsistencies(
-                    repositoryConnection.entityPoolConnection,
-                    it.subject,
-                    it.predicate,
-                    it.`object`,
-                    it.context,
-                    it.status
-                )
-                if (inconsistencies.isNotBlank()) logger.debug("inconsistencies {}", inconsistencies)
-            }
+//            if (inferencer.hasConsistencyRules()) {
+//                //logger.debug("ruleset has consistency rules")
+//                val currentInferencer = (inferencer as SwitchableInferencer).currentInferencer
+//                val inconsistencies = currentInferencer.checkForInconsistencies(
+//                    repositoryConnection.entityPoolConnection,
+//                    it.subject,
+//                    it.predicate,
+//                    it.`object`,
+//                    it.context,
+//                    it.status
+//                )
+//                if (inconsistencies.isNotBlank()) logger.debug("inconsistencies {}", inconsistencies)
+//            }
 //            logger.debug("Running inference with {}", getPrettyStringFor(it.subject, it.predicate, it.`object`))
 
             inferencer.doInference(

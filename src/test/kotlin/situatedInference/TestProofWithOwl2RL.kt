@@ -2973,7 +2973,6 @@ class TestProofWithOwl2RL {
                 #                                     #
                 #######################################
     
-            :I :thinks << :Flash :can :clingFromCeiling >>.
             :I :thinks << :Superman :can :clingFromCeiling >>.
                 
             }  
@@ -2985,7 +2984,7 @@ class TestProofWithOwl2RL {
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 PREFIX : <http://a#>      
                 
-                select distinct  ?subject ?predicate ?object ?context from conj:situations where {
+                select distinct  ?subject ?predicate ?object from conj:situations where {
                     :I :thinks ?triple.
                     
                     bind (conj:situations\/I-thinks as ?g)
@@ -2999,9 +2998,8 @@ class TestProofWithOwl2RL {
                      
                     conj:task conj:situateSchema conj:schemas\/s.
                     
-                    conj:expanded conj:expands ?g
+                     
                     
-                    bind (conj:expanded as ?object).
                     graph ?context {
                         ?subject ?predicate ?object . 
                     }
@@ -3026,7 +3024,6 @@ class TestProofWithOwl2RL {
                     "subject" to "http://a#I",
                     "predicate" to "http://a#thinks",
                     "object" to "<<http://a#Superman http://www.w3.org/1999/02/22-rdf-syntax-ns#type http://t#SpiderSuperHero>>",
-                    "context" to "http://www.ontotext.com/implicit"
                 )
             )
         )
@@ -3036,7 +3033,6 @@ class TestProofWithOwl2RL {
                     "subject" to "http://a#I",
                     "predicate" to "http://a#thinks",
                     "object" to "<<http://a#Flash http://www.w3.org/1999/02/22-rdf-syntax-ns#type http://t#SpiderSuperHero>>",
-                    "context" to "http://www.ontotext.com/implicit"
                 )
             )
         )
@@ -3380,7 +3376,7 @@ class TestProofWithOwl2RL {
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 PREFIX : <http://a#>      
                 
-                ASK {
+                ASK FROM conj:situations {
                      graph conj:schemas\/s {
                         :MarthaKentsThoughts a conj:SituatedContext.
                         :myThoughts a conj:SituatedContext.
@@ -3641,9 +3637,6 @@ class TestProofWithOwl2RL {
                     t:FictionalPerson rdfs:subClassOf t:Person.
                     t:RealPerson rdfs:subClassOf t:Person.
                     t:FictionalPerson owl:complementOf t:RealPerson.
-                  
-        
-
             }
         """.trimIndent()
 

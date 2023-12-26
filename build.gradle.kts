@@ -17,7 +17,7 @@ repositories {
     }
 }
 
-val graphdbVersion = "10.2.0"
+val graphdbVersion = "10.1.0"
 
 dependencies {
     testImplementation(kotlin("test"))
@@ -27,6 +27,11 @@ dependencies {
 
     implementation("com.ontotext.graphdb:graphdb-sdk:$graphdbVersion")
     implementation("com.ontotext.graphdb:graphdb-runtime:$graphdbVersion")
+//    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.21")
+//    compileOnly("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.21")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.21")
+
+
 }
 
 tasks.test {
@@ -35,9 +40,13 @@ tasks.test {
 
 
 tasks.withType<KotlinCompile> {
-    kotlinOptions.jvmTarget = "19"
+    kotlinOptions.jvmTarget = "11"
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
 
 sourceSets.main {
     java.srcDirs("src/main/java", "src/main/kotlin")
